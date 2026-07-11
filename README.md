@@ -106,6 +106,7 @@ npm run build
 - 原始素材进入回收站状态，数据集快照复制素材并保持不可变。
 - 训练参数通过 Pydantic 白名单验证，不拼接 shell 命令。
 - 失败任务保留日志、请求参数和错误信息；暂停任务可使用最近的 `last.pt` 恢复。
+- “系统环境”可创建可迁移备份；恢复前必须停止服务，再运行 `scripts\restore.ps1 -BackupPath <archive.zip> -Confirm`。脚本会先把当前持久化目录保存到 `backups\pre-restore-*`。
 
 ## 许可证
 
