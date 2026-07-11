@@ -9,6 +9,8 @@ __pycache__/
 .pytest_cache/
 .mypy_cache/
 data/*.db
+data/datasets/
+data/server.pid
 uploads/assets/*
 !uploads/assets/.gitkeep
 models/pretrained/*.pt
@@ -24,3 +26,4 @@ resources/Ultralytics/
 output/
 .playwright-cli/
 .omx/
+.idea/

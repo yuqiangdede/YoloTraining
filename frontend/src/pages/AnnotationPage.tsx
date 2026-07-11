@@ -20,9 +20,9 @@ export function AnnotationPage() {
   useEffect(() => { if (selected && !selectedId) setSelectedId(selected.id) }, [selected, selectedId])
   useEffect(() => {
     if (!selected) return
-    api.getAnnotation(selected.id).then((document) => {
-      if (document.task === task) { setShapes(document.shapes as Shape[] ?? []); setStatus(document.status as string ?? 'DRAFT') }
-      else setShapes([])
+    api.getAnnotation(selected.id).then(({ data: document }) => {
+      if (document?.task === task) { setShapes(document.shapes as Shape[] ?? []); setStatus(document.status as string ?? 'DRAFT') }
+      else { setShapes([]); setStatus('DRAFT') }
     }).catch(() => setShapes([]))
   }, [selected?.id, task])
   const save = useMutation({ mutationFn: () => api.saveAnnotation(selected!.id, {

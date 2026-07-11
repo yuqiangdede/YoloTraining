@@ -73,7 +73,7 @@ export const api = {
     return request<{ data: Asset[]; duplicates: string[] }>('/assets', { method: 'POST', body: form })
   },
   recycleAsset: (id: string) => request(`/assets/${id}`, { method: 'DELETE' }),
-  getAnnotation: (id: string) => request<Record<string, unknown>>(`/assets/${id}/annotation`),
+  getAnnotation: (id: string) => request<{ data: Record<string, unknown> | null }>(`/assets/${id}/annotation`),
   saveAnnotation: (id: string, document: unknown) => request(`/assets/${id}/annotation`, {
     method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(document),
   }),

@@ -107,8 +107,8 @@ def save_annotation(asset_id: str, document: AnnotationDocument, session: Sessio
 def get_annotation(asset_id: str, session: Session = Depends(get_session)) -> dict:
     annotation = session.scalar(select(Annotation).where(Annotation.asset_id == asset_id))
     if not annotation:
-        raise HTTPException(404, detail={"code": "ANNOTATION_NOT_FOUND", "message": "尚未标注"})
-    return json.loads(annotation.document_json)
+        return {"data": None}
+    return {"data": json.loads(annotation.document_json)}
 
 
 @router.delete("/{asset_id}")

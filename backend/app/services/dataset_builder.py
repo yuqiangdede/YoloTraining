@@ -47,6 +47,29 @@ def _label_line(document: dict, shape: dict, class_index: int) -> str:
     return f"{class_index} " + " ".join(values)
 
 
+def _split_assets(assets: list[Asset], train_ratio: float, val_ratio: float, test_ratio: float, seed: int) -> dict[str, list[Asset]]:
+    shuffled = sorted(assets, key=lambda item: item.sha256)
+    random.Random(seed).shuffle(shuffled)
+    ratios = {"train": train_ratio, "val": val_ratio, "test": test_ratio}
+    counts = {name: math.floor(len(shuffled) * ratio) for name, ratio in ratios.items()}
+    remaining = len(shuffled) - sum(counts.values())
+    fractions = sorted(ratios, key=lambda name: (len(shuffled) * ratios[name] - counts[name], name), reverse=True)
+    for name in fractions[:remaining]:
+        counts[name] += 1
+
+    required = [name for name, ratio in ratios.items() if ratio > 0]
+    if len(shuffled) >= len(required):
+        for name in required:
+            if counts[name] == 0:
+                donor = max((candidate for candidate in counts if counts[candidate] > 1), key=counts.get)
+                counts[donor] -= 1
+                counts[name] += 1
+
+    train_end = counts["train"]
+    val_end = train_end + counts["val"]
+    return {"train": shuffled[:train_end], "val": shuffled[train_end:val_end], "test": shuffled[val_end:]}
+
+
 def create_snapshot(session: Session, root: Path, request: DatasetCreate) -> DatasetVersion:
     assets = list(session.scalars(select(Asset).where(Asset.id.in_(request.asset_ids), Asset.is_deleted.is_(False))))
     annotations = list(session.scalars(select(Annotation).where(Annotation.asset_id.in_(request.asset_ids))))
@@ -73,12 +96,7 @@ def create_snapshot(session: Session, root: Path, request: DatasetCreate) -> Dat
     dataset_id = str(uuid4())
     relative = Path("data") / "datasets" / dataset_id
     snapshot = root / relative
-    rng = random.Random(request.seed)
-    shuffled = sorted(assets, key=lambda item: item.sha256)
-    rng.shuffle(shuffled)
-    train_end = max(1, round(len(shuffled) * request.train_ratio))
-    val_end = train_end + round(len(shuffled) * request.val_ratio)
-    splits = {"train": shuffled[:train_end], "val": shuffled[train_end:val_end], "test": shuffled[val_end:]}
+    splits = _split_assets(assets, request.train_ratio, request.val_ratio, request.test_ratio, request.seed)
     class_ids = {item.id: index for index, item in enumerate(request.classes)}
     for split, split_assets in splits.items():
         (snapshot / "images" / split).mkdir(parents=True, exist_ok=True)
