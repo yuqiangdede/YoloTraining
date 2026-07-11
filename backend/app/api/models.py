@@ -3,6 +3,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi.responses import FileResponse
 from pydantic import Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -43,6 +44,17 @@ def list_models(request: Request, session: Session = Depends(get_session)) -> di
     for path in sorted((request.app.state.root / "models" / "pretrained").glob("*.pt")):
         pretrained.append({"name": path.name, "path": path.relative_to(request.app.state.root).as_posix(), "kind": "PRETRAINED", "sizeBytes": path.stat().st_size})
     return {"data": artifacts, "pretrained": pretrained}
+
+
+@router.get("/{artifact_id}/download")
+def download_model(request: Request, artifact_id: str, session: Session = Depends(get_session)) -> FileResponse:
+    artifact = session.get(ModelArtifact, artifact_id)
+    if not artifact:
+        raise HTTPException(404, detail={"code": "MODEL_NOT_FOUND", "message": "模型产物不存在"})
+    path = request.app.state.paths.resolve(artifact.path)
+    if not path.is_file():
+        raise HTTPException(404, detail={"code": "MODEL_FILE_MISSING", "message": "模型文件缺失"})
+    return FileResponse(path, filename=artifact.name, media_type="application/octet-stream")
 
 
 @router.post("/{artifact_id}/exports", status_code=status.HTTP_201_CREATED)

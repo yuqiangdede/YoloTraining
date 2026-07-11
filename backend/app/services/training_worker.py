@@ -1,4 +1,5 @@
 import hashlib
+import csv
 import json
 import os
 import subprocess
@@ -148,12 +149,19 @@ class TrainingWorker:
         session.commit()
 
     def _collect_artifacts(self, session, job: TrainingJob, run_dir: Path) -> None:
+        metrics = {}
+        results_csv = next(iter(run_dir.rglob("results.csv")), None)
+        if results_csv:
+            with results_csv.open(encoding="utf-8", errors="replace") as handle:
+                rows = list(csv.DictReader(handle))
+                if rows:
+                    metrics = {key.strip(): value.strip() if isinstance(value, str) else value for key, value in rows[-1].items()}
         for path in run_dir.rglob("*.pt"):
             digest = hashlib.sha256(path.read_bytes()).hexdigest()
             relative = path.relative_to(self.root).as_posix()
             session.add(ModelArtifact(
                 id=str(uuid4()), training_job_id=job.id, task=job.task, name=path.name,
-                path=relative, kind="PT", sha256=digest, metrics_json="{}",
+                path=relative, kind="PT", sha256=digest, metrics_json=json.dumps(metrics, ensure_ascii=False),
             ))
 
     def _run_export(self, session, export: ExportJob) -> None:

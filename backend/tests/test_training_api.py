@@ -76,6 +76,9 @@ class TrainingApiTests(unittest.TestCase):
         response = self.client.post("/api/v1/models/artifact-1/exports", json={"format": "onnx", "imgsz": 640})
         self.assertEqual(response.status_code, 201)
         self.assertEqual(response.json()["status"], "QUEUED")
+        download = self.client.get("/api/v1/models/artifact-1/download")
+        self.assertEqual(download.status_code, 200)
+        self.assertEqual(download.content, b"trained model")
 
     def test_create_prelabel_job_without_overwriting_human_labels(self) -> None:
         with self.app.state.database.session() as session:

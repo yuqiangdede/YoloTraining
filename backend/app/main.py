@@ -16,6 +16,7 @@ from app.api.system import router as system_router
 from app.api.prelabels import router as prelabels_router
 from app.core.database import Database
 from app.core.paths import ProjectPaths
+from app.core.spa import SpaStaticFiles
 from app.services.training_worker import TrainingWorker
 
 
@@ -76,7 +77,7 @@ def create_app(root: Path | None = None, start_worker: bool = True) -> FastAPI:
     app.mount("/media", StaticFiles(directory=project_root / "uploads"), name="media")
     frontend_dist = project_root / "frontend" / "dist"
     if frontend_dist.is_dir():
-        app.mount("/", StaticFiles(directory=frontend_dist, html=True), name="frontend")
+        app.mount("/", SpaStaticFiles(directory=frontend_dist, html=True), name="frontend")
     return app
 
 

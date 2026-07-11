@@ -32,6 +32,16 @@ export interface TrainingJob {
   createdAt: string
 }
 
+export interface ModelArtifact {
+  id: string
+  name: string
+  task: TaskType
+  path: string
+  kind: string
+  sha256: string
+  metrics: Record<string, string | number>
+}
+
 export class ApiError extends Error {
   constructor(message: string, public code = 'REQUEST_FAILED') { super(message) }
 }
@@ -69,4 +79,11 @@ export const api = {
   }),
   jobAction: (id: string, action: 'pause' | 'resume' | 'cancel') => request<TrainingJob>(`/training-jobs/${id}/${action}`, { method: 'POST' }),
   artifacts: (jobId: string) => request<{ data: Array<Record<string, unknown>> }>(`/training-jobs/${jobId}/artifacts`),
+  models: () => request<{ data: ModelArtifact[]; pretrained: Array<{ name: string; path: string; sizeBytes: number }> }>('/models'),
+  createExport: (artifactId: string) => request<{ id: string; status: string }>(`/models/${artifactId}/exports`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ format: 'onnx', imgsz: 640 }),
+  }),
+  createPrelabel: (body: unknown) => request<{ id: string; status: string }>('/prelabel-jobs', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+  }),
 }
