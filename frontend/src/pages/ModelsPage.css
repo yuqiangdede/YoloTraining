@@ -1,0 +1,22 @@
+.model-card.selected-model {
+  border-color: var(--accent);
+}
+
+.model-select {
+  align-items: center;
+  display: flex;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.model-select input {
+  min-width: auto;
+}
+
+.panel-heading h2 svg {
+  margin-right: 6px;
+  vertical-align: -3px;
+}
+
+.metric-up { color: var(--success); }
+.metric-down { color: var(--danger); }

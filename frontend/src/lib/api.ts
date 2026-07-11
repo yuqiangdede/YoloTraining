@@ -42,6 +42,13 @@ export interface ModelArtifact {
   metrics: Record<string, string | number>
 }
 
+export interface BackupRecord {
+  label: string
+  path: string
+  createdAt: string
+  sizeBytes: number
+}
+
 export class ApiError extends Error {
   constructor(message: string, public code = 'REQUEST_FAILED') { super(message) }
 }
@@ -58,6 +65,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const api = {
   health: () => request<{ status: string; projectRoot: string }>('/health'),
+  environment: () => request<{ python: string; gpu: { isAvailable: boolean; name: string | null; cuda: string | null; memoryBytes: number | null }; disk: { totalBytes: number; freeBytes: number }; projectRoot: string; venvIsLocal: boolean }>('/system/environment'),
   assets: () => request<{ data: Asset[] }>('/assets?page=1&pageSize=100'),
   uploadAssets: (files: FileList) => {
     const form = new FormData()
@@ -86,4 +94,6 @@ export const api = {
   createPrelabel: (body: unknown) => request<{ id: string; status: string }>('/prelabel-jobs', {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
   }),
+  backups: () => request<{ data: BackupRecord[] }>('/backups'),
+  createBackup: (label = 'manual') => request<BackupRecord>('/backups', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ label }) }),
 }

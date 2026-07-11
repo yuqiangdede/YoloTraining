@@ -20,10 +20,12 @@ export function AnnotationCanvas({ asset, task, labelId, shapes, onChange }: {
 }) {
   const svgRef = useRef<SVGSVGElement>(null)
   const [draft, setDraft] = useState<number[][]>([])
+  const draftRef = useRef<number[][]>([])
+  const [semanticTool, setSemanticTool] = useState<'polygon' | 'brush'>('polygon')
   const [history, setHistory] = useState<Shape[][]>([shapes])
   const [historyIndex, setHistoryIndex] = useState(0)
 
-  useEffect(() => { setDraft([]); setHistory([shapes]); setHistoryIndex(0) }, [asset.id, task])
+  useEffect(() => { draftRef.current = []; setDraft([]); setHistory([shapes]); setHistoryIndex(0); setSemanticTool('polygon') }, [asset.id, task])
 
   const point = useCallback((event: React.PointerEvent<SVGSVGElement>) => {
     const rect = svgRef.current!.getBoundingClientRect()
@@ -35,32 +37,40 @@ export function AnnotationCanvas({ asset, task, labelId, shapes, onChange }: {
     setHistory(nextHistory); setHistoryIndex(nextHistory.length - 1); onChange(next)
   }
 
+  const replaceDraft = (next: number[][]) => { draftRef.current = next; setDraft(next) }
+
   const finishDraft = () => {
+    const points = draftRef.current
     const minimum = task === 'pose' ? 1 : 3
-    if (draft.length < minimum) return
+    if (points.length < minimum) return
     const shape: Shape = {
-      id: crypto.randomUUID(), labelId, kind: kindByTask[task], points: draft,
-      visibility: task === 'pose' ? draft.map(() => 2) : undefined,
+      id: crypto.randomUUID(), labelId, kind: kindByTask[task], points,
+      visibility: task === 'pose' ? points.map(() => 2) : undefined,
     }
-    commit([...shapes, shape]); setDraft([])
+    commit([...shapes, shape]); replaceDraft([])
   }
 
   const onPointerDown = (event: React.PointerEvent<SVGSVGElement>) => {
     const nextPoint = point(event)
-    if (task === 'detect' || task === 'obb') {
-      setDraft([nextPoint]); svgRef.current?.setPointerCapture(event.pointerId)
-    } else setDraft((current) => [...current, nextPoint])
+    if (task === 'detect' || task === 'obb' || (task === 'semantic' && semanticTool === 'brush')) {
+      replaceDraft([nextPoint]); svgRef.current?.setPointerCapture(event.pointerId)
+    } else replaceDraft([...draftRef.current, nextPoint])
   }
 
   const onPointerMove = (event: React.PointerEvent<SVGSVGElement>) => {
-    if ((task === 'detect' || task === 'obb') && draft.length) setDraft([draft[0], point(event)])
+    if ((task === 'detect' || task === 'obb') && draftRef.current.length) replaceDraft([draftRef.current[0], point(event)])
+    if (task === 'semantic' && semanticTool === 'brush' && draftRef.current.length) {
+      const next = point(event); const previous = draftRef.current.at(-1)!
+      if (Math.hypot(next[0] - previous[0], next[1] - previous[1]) > 0.004) replaceDraft([...draftRef.current, next])
+    }
   }
 
   const onPointerUp = () => {
-    if ((task === 'detect' || task === 'obb') && draft.length === 2) {
-      const shape: Shape = { id: crypto.randomUUID(), labelId, kind: kindByTask[task], points: draft, rotation: task === 'obb' ? 0 : undefined }
-      commit([...shapes, shape]); setDraft([])
+    if ((task === 'detect' || task === 'obb') && draftRef.current.length === 2) {
+      const shape: Shape = { id: crypto.randomUUID(), labelId, kind: kindByTask[task], points: draftRef.current, rotation: task === 'obb' ? 0 : undefined }
+      commit([...shapes, shape]); replaceDraft([])
     }
+    if (task === 'semantic' && semanticTool === 'brush') finishDraft()
   }
 
   const undo = () => {
@@ -77,7 +87,7 @@ export function AnnotationCanvas({ asset, task, labelId, shapes, onChange }: {
       if (event.ctrlKey && event.key.toLowerCase() === 'z') { event.preventDefault(); undo() }
       if (event.ctrlKey && event.key.toLowerCase() === 'y') { event.preventDefault(); redo() }
       if (event.key === 'Enter') finishDraft()
-      if (event.key === 'Escape') setDraft([])
+      if (event.key === 'Escape') replaceDraft([])
     }
     window.addEventListener('keydown', listener)
     return () => window.removeEventListener('keydown', listener)
@@ -97,8 +107,9 @@ export function AnnotationCanvas({ asset, task, labelId, shapes, onChange }: {
     <div className="canvas-toolbar">
       <button className="button ghost" onClick={undo} disabled={!historyIndex}>撤销</button>
       <button className="button ghost" onClick={redo} disabled={historyIndex >= history.length - 1}>重做</button>
+      {task === 'semantic' && <><button className={`button ghost ${semanticTool === 'polygon' ? 'active-tool' : ''}`} onClick={() => setSemanticTool('polygon')}>多边形</button><button className={`button ghost ${semanticTool === 'brush' ? 'active-tool' : ''}`} onClick={() => setSemanticTool('brush')}>画笔</button></>}
       {(task === 'segment' || task === 'semantic' || task === 'pose') && <button className="button secondary" onClick={finishDraft}>完成当前形状</button>}
-      <span>{task === 'detect' || task === 'obb' ? '按住拖动绘制' : '逐点单击，Enter 完成'}</span>
+      <span>{task === 'detect' || task === 'obb' ? '按住拖动绘制' : task === 'semantic' && semanticTool === 'brush' ? '按住拖动画笔绘制区域' : '逐点单击，Enter 完成'}</span>
     </div>
     <svg ref={svgRef} className="annotation-canvas" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet" onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onDoubleClick={finishDraft} aria-label="标注画布">
       <image href={`/media/${asset.storagePath.replace('uploads/', '')}`} x="0" y="0" width="100" height="100" preserveAspectRatio="xMidYMid meet" />
