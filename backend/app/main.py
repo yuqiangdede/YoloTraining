@@ -1,6 +1,7 @@
 from pathlib import Path
 from contextlib import asynccontextmanager
 import os
+import json
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -15,6 +16,7 @@ from app.api.models import router as models_router
 from app.api.system import router as system_router
 from app.api.prelabels import router as prelabels_router
 from app.api.backups import router as backups_router
+from app.api.dataset_exports import router as dataset_exports_router
 from app.core.database import Database
 from app.core.paths import ProjectPaths
 from app.core.spa import SpaStaticFiles
@@ -57,6 +59,7 @@ def create_app(root: Path | None = None, start_worker: bool = True) -> FastAPI:
     app.include_router(system_router, prefix="/api/v1")
     app.include_router(prelabels_router, prefix="/api/v1")
     app.include_router(backups_router, prefix="/api/v1")
+    app.include_router(dataset_exports_router, prefix="/api/v1")
 
 
     @app.exception_handler(HTTPException)

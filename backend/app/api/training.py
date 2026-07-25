@@ -1,4 +1,6 @@
 import json
+import shutil
+from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
 
@@ -7,22 +9,55 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_session
-from app.models import DatasetVersion, ModelArtifact, TrainingJob
+from app.models import DatasetVersion, ExportJob, ModelArtifact, PrelabelJob, TrainingJob, VideoInferenceJob
 from app.schemas.training import TrainRequest
+from app.services.dataset_builder import DatasetSplitError, validate_snapshot_split
 from app.services.state_machine import JobStatus, transition
+from app.services.training_metrics import summarize_results_file
 
 
 router = APIRouter(prefix="/training-jobs", tags=["training"])
 
 
-def job_json(job: TrainingJob) -> dict:
-    return {
+def job_json(job: TrainingJob, queue_info: dict | None = None) -> dict:
+    payload = {
         "id": job.id, "name": job.name, "datasetVersionId": job.dataset_version_id,
         "task": job.task, "modelPath": job.model_path, "runPath": job.run_path,
         "status": job.status, "params": json.loads(job.params_json), "progress": job.progress,
         "currentEpoch": job.current_epoch, "errorMessage": job.error_message,
         "createdAt": job.created_at.isoformat(), "updatedAt": job.updated_at.isoformat(),
     }
+    if queue_info:
+        payload.update(queue_info)
+    return payload
+
+
+def _queue_info(session: Session) -> dict[str, dict]:
+    queued: list[tuple[str, object]] = []
+    for model in (TrainingJob, ExportJob, PrelabelJob, VideoInferenceJob):
+        queued.extend((model.__name__, item) for item in session.scalars(
+            select(model).where(model.status == JobStatus.QUEUED)
+        ))
+    queued.sort(key=lambda pair: pair[1].created_at)
+    running = any(
+        session.scalar(select(model).where(model.status.in_([JobStatus.RUNNING, JobStatus.PAUSING])))
+        for model in (TrainingJob, ExportJob, PrelabelJob, VideoInferenceJob)
+    )
+    offset = 1 if running else 0
+    now = datetime.now(timezone.utc)
+    result: dict[str, dict] = {}
+    for index, (kind, item) in enumerate(queued):
+        if kind != "TrainingJob":
+            continue
+        created = item.created_at
+        if created.tzinfo is None:
+            created = created.replace(tzinfo=timezone.utc)
+        result[item.id] = {
+            "queuePosition": index + 1 + offset,
+            "queueSize": len(queued) + offset,
+            "waitSeconds": max(0, int((now - created).total_seconds())),
+        }
+    return result
 
 
 @router.post("", status_code=status.HTTP_201_CREATED)
@@ -32,6 +67,11 @@ def create_training_job(request: Request, payload: TrainRequest, session: Sessio
         raise HTTPException(404, detail={"code": "DATASET_NOT_FOUND", "message": "数据集版本不存在"})
     if dataset.task != payload.task:
         raise HTTPException(422, detail={"code": "TASK_MISMATCH", "message": "模型任务与数据集不一致"})
+    manifest = json.loads(dataset.manifest_json)
+    try:
+        validate_snapshot_split(request.app.state.root / dataset.snapshot_path, require_validation=manifest.get("valRatio", 1) > 0)
+    except DatasetSplitError as error:
+        raise HTTPException(422, detail={"code": "INVALID_DATASET_SPLIT", "message": str(error)}) from error
     model = request.app.state.paths.resolve(payload.model_path)
     if not model.is_file():
         raise HTTPException(422, detail={"code": "MODEL_NOT_FOUND", "message": "项目内模型文件不存在"})
@@ -48,9 +88,10 @@ def create_training_job(request: Request, payload: TrainRequest, session: Sessio
 
 
 @router.get("")
-def list_training_jobs(session: Session = Depends(get_session)) -> dict:
+def list_training_jobs(request: Request, session: Session = Depends(get_session)) -> dict:
     jobs = session.scalars(select(TrainingJob).order_by(TrainingJob.created_at.desc()))
-    return {"data": [job_json(job) for job in jobs]}
+    queue = _queue_info(session)
+    return {"data": [job_json(job, queue.get(job.id)) for job in jobs], "worker": request.app.state.worker.health()}
 
 
 @router.get("/{job_id}")
@@ -59,6 +100,32 @@ def get_training_job(job_id: str, session: Session = Depends(get_session)) -> di
     if not job:
         raise HTTPException(404, detail={"code": "JOB_NOT_FOUND", "message": "训练任务不存在"})
     return job_json(job)
+
+
+@router.delete("/{job_id}")
+def delete_training_job(job_id: str, request: Request, session: Session = Depends(get_session)) -> dict:
+    job = session.get(TrainingJob, job_id)
+    if not job:
+        raise HTTPException(404, detail={"code": "JOB_NOT_FOUND", "message": "训练任务不存在"})
+    if job.status in {JobStatus.RUNNING, JobStatus.PAUSING}:
+        raise HTTPException(409, detail={"code": "JOB_RUNNING", "message": "运行中的训练任务请先取消后再删除"})
+
+    artifacts = list(session.scalars(select(ModelArtifact).where(ModelArtifact.training_job_id == job_id)))
+    artifact_ids = [item.id for item in artifacts]
+    exports = list(session.scalars(select(ExportJob).where(ExportJob.artifact_id.in_(artifact_ids)))) if artifact_ids else []
+    for artifact in artifacts:
+        request.app.state.paths.resolve(artifact.path).unlink(missing_ok=True)
+    for export in exports:
+        if export.output_path:
+            request.app.state.paths.resolve(export.output_path).unlink(missing_ok=True)
+        shutil.rmtree(request.app.state.root / "runs" / "exports" / export.id, ignore_errors=True)
+    shutil.rmtree(request.app.state.root / job.run_path, ignore_errors=True)
+    if artifact_ids:
+        session.query(ExportJob).filter(ExportJob.artifact_id.in_(artifact_ids)).delete(synchronize_session=False)
+    session.query(ModelArtifact).filter(ModelArtifact.training_job_id == job_id).delete(synchronize_session=False)
+    session.delete(job)
+    session.commit()
+    return {"id": job_id, "deleted": True}
 
 
 @router.get("/{job_id}/log")
@@ -116,10 +183,12 @@ def resume_job(job_id: str, session: Session = Depends(get_session)) -> dict:
 
 
 @router.get("/{job_id}/artifacts")
-def list_artifacts(job_id: str, session: Session = Depends(get_session)) -> dict:
+def list_artifacts(request: Request, job_id: str, session: Session = Depends(get_session)) -> dict:
     items = session.scalars(select(ModelArtifact).where(ModelArtifact.training_job_id == job_id))
     return {"data": [{
         "id": item.id, "trainingJobId": item.training_job_id, "task": item.task,
         "name": item.name, "path": item.path, "kind": item.kind, "sha256": item.sha256,
-        "metrics": json.loads(item.metrics_json), "createdAt": item.created_at.isoformat(),
+        "metrics": json.loads(item.metrics_json),
+        "trainingQuality": json.loads(item.training_quality_json) if item.training_quality_json and item.training_quality_json != "{}" else summarize_results_file(next(iter((request.app.state.root / "runs" / job_id).rglob("results.csv")), None), item.task),
+        "createdAt": item.created_at.isoformat(),
     } for item in items]}

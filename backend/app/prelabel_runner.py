@@ -34,6 +34,60 @@ def shapes_from_result(result, task: str, root: Path, asset: dict) -> list[dict]
     return shapes
 
 
+def mask_shapes(result, labels: list[str], task: str) -> list[dict]:
+    if result.masks is None:
+        return []
+    shapes = []
+    for polygon, label in zip(result.masks.xyn, labels):
+        points = polygon.tolist()
+        if len(points) < 3:
+            continue
+        if task == "detect":
+            xs = [point[0] for point in points]
+            ys = [point[1] for point in points]
+            shapes.append({"id": str(uuid4()), "labelId": label, "kind": "rectangle", "points": [[min(xs), min(ys)], [max(xs), max(ys)]]})
+        else:
+            shapes.append({"id": str(uuid4()), "labelId": label, "kind": "polygon", "points": points})
+    return shapes
+
+
+def run_yolo_sam(root: Path, payload: dict) -> list[dict]:
+    from ultralytics import SAM, YOLO
+
+    detector = YOLO(str(root / payload["modelPath"]))
+    sam = SAM(str(root / payload["samModelPath"]))
+    documents = []
+    for asset in payload["assets"]:
+        source = str(root / asset["path"])
+        detected = detector.predict(source, conf=payload["confidence"], verbose=False)[0]
+        boxes = detected.boxes
+        if boxes is None or len(boxes) == 0:
+            shapes = []
+        else:
+            masks = sam.predict(source, bboxes=boxes.xyxy.cpu().tolist(), verbose=False)[0]
+            labels = [str(detected.names[int(cls)]) for cls in boxes.cls.cpu().tolist()]
+            shapes = mask_shapes(masks, labels, payload["task"])
+        documents.append({"assetId": asset["id"], "task": payload["task"], "imageWidth": asset["width"], "imageHeight": asset["height"], "status": "DRAFT", "shapes": shapes})
+    return documents
+
+
+def run_sam(root: Path, payload: dict) -> list[dict]:
+    from ultralytics.models.sam.predict import SAM3SemanticPredictor
+
+    predictor = SAM3SemanticPredictor(overrides={
+        "model": str(root / payload["samModelPath"]), "task": "segment", "mode": "predict",
+        "conf": payload["confidence"], "verbose": False,
+    })
+    predictor.setup_model(verbose=False)
+    documents = []
+    for asset in payload["assets"]:
+        predictor.set_prompts({"text": payload["categoryNames"]})
+        result = predictor(str(root / asset["path"]))[0]
+        labels = [str(result.names[int(cls)]) for cls in result.boxes.cls.cpu().tolist()] if result.boxes is not None else []
+        documents.append({"assetId": asset["id"], "task": payload["task"], "imageWidth": asset["width"], "imageHeight": asset["height"], "status": "DRAFT", "shapes": mask_shapes(result, labels, payload["task"])})
+    return documents
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--root", required=True); parser.add_argument("--request", required=True)
@@ -41,17 +95,23 @@ def main() -> int:
     os.environ.setdefault("YOLO_CONFIG_DIR", str(root / "resources"))
     payload = json.loads(request_path.read_text(encoding="utf-8"))
     try:
-        from ultralytics import YOLO
-        model = YOLO(str(root / payload["modelPath"]))
-        sources = [str(root / asset["path"]) for asset in payload["assets"]]
-        results = model.predict(sources, conf=payload["confidence"], verbose=False)
-        documents = []
-        for asset, result in zip(payload["assets"], results):
-            documents.append({
-                "assetId": asset["id"], "task": payload["task"], "imageWidth": asset["width"],
-                "imageHeight": asset["height"], "status": "DRAFT",
-                "shapes": shapes_from_result(result, payload["task"], root, asset),
-            })
+        mode = payload.get("mode", "yolo")
+        if mode == "yolo_sam":
+            documents = run_yolo_sam(root, payload)
+        elif mode == "sam":
+            documents = run_sam(root, payload)
+        else:
+            from ultralytics import YOLO
+            model = YOLO(str(root / payload["modelPath"]))
+            sources = [str(root / asset["path"]) for asset in payload["assets"]]
+            results = model.predict(sources, conf=payload["confidence"], verbose=False)
+            documents = []
+            for asset, result in zip(payload["assets"], results):
+                documents.append({
+                    "assetId": asset["id"], "task": payload["task"], "imageWidth": asset["width"],
+                    "imageHeight": asset["height"], "status": "DRAFT",
+                    "shapes": shapes_from_result(result, payload["task"], root, asset),
+                })
         (request_path.parent / "result.json").write_text(json.dumps({"documents": documents}, ensure_ascii=False), encoding="utf-8")
         return 0
     except Exception as exc:

@@ -1,8 +1,11 @@
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 
 from app.core.paths import ProjectPaths
+from app.api.models import _prediction_rows
+from app.prelabel_runner import mask_shapes
 from app.schemas.annotations import AnnotationDocument, AnnotationShape, TaskType
 from app.services.state_machine import InvalidTransition, JobStatus, transition
 
@@ -19,6 +22,34 @@ class ProjectPathsTests(unittest.TestCase):
 
 
 class AnnotationValidationTests(unittest.TestCase):
+    def test_detection_prediction_uses_normalized_xyxy_boxes(self) -> None:
+        class TensorLike:
+            def __init__(self, value):
+                self.value = value
+
+            def cpu(self):
+                return self
+
+            def tolist(self):
+                return self.value
+
+        result = SimpleNamespace(
+            names={0: "car"},
+            boxes=SimpleNamespace(
+                xyxyn=TensorLike([[0.1, 0.2, 0.8, 0.9]]),
+                conf=TensorLike([0.95]),
+                cls=TensorLike([0]),
+            ),
+            masks=None,
+            keypoints=None,
+            obb=None,
+        )
+
+        self.assertEqual(_prediction_rows(result, "detect"), [{
+            "label": "car", "confidence": 0.95, "kind": "rectangle",
+            "points": [0.1, 0.2, 0.8, 0.9],
+        }])
+
     def test_detection_requires_two_normalized_points(self) -> None:
         document = AnnotationDocument(
             asset_id="asset-1",
@@ -35,6 +66,18 @@ class AnnotationValidationTests(unittest.TestCase):
             ],
         )
         self.assertEqual(document.shapes[0].kind, "rectangle")
+
+    def test_sam_mask_can_be_converted_to_detection_rectangle(self) -> None:
+        class Polygon:
+            def tolist(self):
+                return [[0.2, 0.1], [0.8, 0.1], [0.7, 0.6], [0.3, 0.7]]
+
+        class Result:
+            masks = type("Masks", (), {"xyn": [Polygon()]})()
+
+        shapes = mask_shapes(Result(), ["car"], "detect")
+        self.assertEqual(shapes[0]["kind"], "rectangle")
+        self.assertEqual(shapes[0]["points"], [[0.2, 0.1], [0.8, 0.7]])
 
     def test_rejects_out_of_bounds_points(self) -> None:
         with self.assertRaises(ValueError):

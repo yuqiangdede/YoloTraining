@@ -30,6 +30,11 @@ def main() -> int:
         params.pop("dataset_version_id", None)
         params.pop("task", None)
         resume = bool(params.pop("resume", False))
+        augmentation_preset = params.pop("augmentation_preset", "none")
+        if augmentation_preset != "none":
+            from app.services.augmentation_presets import build_augmentations
+
+            params["augmentations"] = build_augmentations(augmentation_preset)
         last = next(iter(run_dir.rglob("last.pt")), None)
         model = YOLO(str(last if resume and last else model_path))
         if resume and last:

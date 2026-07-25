@@ -4,6 +4,7 @@ from typing import Literal
 from pydantic import Field, model_validator
 
 from app.schemas.common import ApiModel
+from app.services.augmentation_presets import AugmentationPreset
 
 
 TrainingTask = Literal["detect", "segment", "semantic", "pose", "obb"]
@@ -52,6 +53,7 @@ class TrainRequest(ApiModel):
     mosaic: float = Field(default=1.0, ge=0, le=1)
     mixup: float = Field(default=0.0, ge=0, le=1)
     copy_paste: float = Field(default=0.0, ge=0, le=1)
+    augmentation_preset: AugmentationPreset = "none"
     resume: bool = False
 
     @model_validator(mode="after")
