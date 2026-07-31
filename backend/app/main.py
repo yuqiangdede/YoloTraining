@@ -11,6 +11,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.api.assets import router as assets_router
 from app.api.annotation_tasks import router as annotation_tasks_router
+from app.api.analysis import router as analysis_router
 from app.api.datasets import router as datasets_router
 from app.api.training import router as training_router
 from app.api.models import router as models_router
@@ -56,6 +57,7 @@ def create_app(root: Path | None = None, start_worker: bool = True) -> FastAPI:
     )
     app.include_router(assets_router, prefix="/api/v1")
     app.include_router(annotation_tasks_router, prefix="/api/v1")
+    app.include_router(analysis_router, prefix="/api/v1")
     app.include_router(datasets_router, prefix="/api/v1")
     app.include_router(training_router, prefix="/api/v1")
     app.include_router(models_router, prefix="/api/v1")

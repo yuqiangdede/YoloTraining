@@ -14,7 +14,7 @@ from uuid import uuid4
 from sqlalchemy import select, update
 
 from app.core.database import Database
-from app.models import Annotation, Asset, DatasetCategory, DatasetVersion, ExportJob, ModelArtifact, PrelabelJob, TrainingJob, VideoInferenceJob
+from app.models import AnalysisJob, Annotation, Asset, DatasetCategory, DatasetVersion, ExportJob, ModelArtifact, PrelabelJob, TrainingJob, VideoInferenceJob
 from app.services.state_machine import JobStatus
 from app.services.training_metrics import summarize_results
 
@@ -66,7 +66,7 @@ class TrainingWorker:
 
     def _recover_interrupted(self) -> None:
         with self.database.session() as session:
-            for model in (TrainingJob, ExportJob, PrelabelJob, VideoInferenceJob):
+            for model in (TrainingJob, ExportJob, PrelabelJob, VideoInferenceJob, AnalysisJob):
                 items = session.scalars(select(model).where(model.status.in_([JobStatus.RUNNING, JobStatus.PAUSING])))
                 for item in items:
                     item.status = JobStatus.FAILED
@@ -94,6 +94,8 @@ class TrainingWorker:
                         self._run_prelabel(session, item)
                     elif kind == "video":
                         self._run_video(session, item)
+                    elif kind == "analysis":
+                        self._run_analysis(session, item)
                     self._set_error(None)
             except Exception as error:
                 self._set_error(error)
@@ -107,7 +109,7 @@ class TrainingWorker:
             job_id, kind = self._current_job_id, self._current_kind
         if not job_id:
             return
-        model = {"training": TrainingJob, "export": ExportJob, "prelabel": PrelabelJob, "video": VideoInferenceJob}.get(kind or "")
+        model = {"training": TrainingJob, "export": ExportJob, "prelabel": PrelabelJob, "video": VideoInferenceJob, "analysis": AnalysisJob}.get(kind or "")
         if not model:
             return
         try:
@@ -126,9 +128,27 @@ class TrainingWorker:
             ("export", session.scalar(select(ExportJob).where(ExportJob.status == JobStatus.QUEUED).order_by(ExportJob.created_at))),
             ("prelabel", session.scalar(select(PrelabelJob).where(PrelabelJob.status == JobStatus.QUEUED).order_by(PrelabelJob.created_at))),
             ("video", session.scalar(select(VideoInferenceJob).where(VideoInferenceJob.status == JobStatus.QUEUED).order_by(VideoInferenceJob.created_at))),
+            ("analysis", session.scalar(select(AnalysisJob).where(AnalysisJob.status == JobStatus.QUEUED).order_by(AnalysisJob.created_at))),
         ]
         ready = [(kind, item) for kind, item in candidates if item]
         return min(ready, key=lambda candidate: candidate[1].created_at) if ready else (None, None)
+
+    def _run_analysis(self, session, job: AnalysisJob) -> None:
+        claimed = session.execute(
+            update(AnalysisJob).where(AnalysisJob.id == job.id, AnalysisJob.status == JobStatus.QUEUED).values(status=JobStatus.RUNNING)
+        ).rowcount
+        if claimed != 1:
+            session.rollback()
+            return
+        session.commit()
+        session.refresh(job)
+        try:
+            from app.services.model_analysis import run_analysis_job
+            run_analysis_job(self.root, session, job)
+        except Exception as error:
+            job.status = JobStatus.FAILED
+            job.error_message = str(error)
+            session.commit()
 
     def _run_video(self, session, job: VideoInferenceJob) -> None:
         claimed = session.execute(
