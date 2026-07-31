@@ -79,6 +79,30 @@ export interface AnnotationTask {
   updatedAt: string
 }
 
+export interface AnalysisSample {
+  assetId: string
+  filename: string
+  storagePath: string
+  tp: number
+  fp: number
+  fn: number
+  groundTruth: Array<{ label: string; box: number[] }>
+  predictions: Array<{ label: string; box: number[]; confidence: number }>
+}
+
+export interface AnalysisJob {
+  id: string
+  datasetId: string
+  modelId: string
+  task: TaskType
+  status: string
+  progress: number
+  params: { confidence: number; iouThreshold: number }
+  result: { totals?: { tp: number; fp: number; fn: number }; sampleCount?: number; samples?: AnalysisSample[] }
+  errorMessage?: string | null
+  createdAt: string
+}
+
 export interface Category {
   id: string
   name: string
@@ -282,6 +306,9 @@ export const api = {
   annotationTasks: (datasetId: string) => request<{ data: AnnotationTask[] }>(`/datasets/${datasetId}/annotation-tasks`),
   createAnnotationTask: (datasetId: string, body: { name: string; assignee?: string; assetIds?: string[] }) => request<{ data: AnnotationTask }>(`/datasets/${datasetId}/annotation-tasks`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }),
   updateAnnotationTask: (datasetId: string, taskId: string, body: { assignee: string; status: AnnotationTask['status'] }) => request<{ data: AnnotationTask }>(`/datasets/${datasetId}/annotation-tasks/${taskId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }),
+  analysisJobs: (datasetId: string) => request<{ data: AnalysisJob[] }>(`/datasets/${datasetId}/analysis-jobs`),
+  createAnalysisJob: (datasetId: string, body: { modelId: string; confidence: number; iouThreshold: number }) => request<{ data: AnalysisJob }>(`/datasets/${datasetId}/analysis-jobs`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }),
+  cancelAnalysisJob: (datasetId: string, jobId: string) => request<{ data: AnalysisJob }>(`/datasets/${datasetId}/analysis-jobs/${jobId}/cancel`, { method: 'POST' }),
   recycleAsset: (datasetId: string, id: string) => request(`/datasets/${datasetId}/assets/${id}`, { method: 'DELETE' }),
   restoreAsset: (datasetId: string, id: string) => request<Asset>(`/datasets/${datasetId}/assets/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ isDeleted: false }) }),
   getAnnotation: (datasetId: string, id: string) => request<{ data: Record<string, unknown> | null }>(`/datasets/${datasetId}/assets/${id}/annotation`),

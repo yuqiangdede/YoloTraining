@@ -1,6 +1,7 @@
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { AppShell } from './components/AppShell'
 import { AnnotationPage } from './pages/AnnotationPage'
+import { AnalysisPage } from './pages/AnalysisPage'
 import { DashboardPage } from './pages/DashboardPage'
 import { DatasetsPage } from './pages/DatasetsPage'
 import { DatasetWorkspacePage } from './pages/DatasetWorkspacePage'
@@ -17,6 +18,7 @@ export function App() {
     <Route path="projects/:projectId" element={<ProjectPage />} />
     <Route path="datasets/:datasetId" element={<DatasetWorkspacePage />} />
     <Route path="datasets/:datasetId/annotate" element={<AnnotationPage />} />
+    <Route path="datasets/:datasetId/analysis" element={<AnalysisPage />} />
     <Route path="datasets" element={<DatasetsPage />} />
     <Route path="training" element={<TrainingPage />} />
     <Route path="models" element={<ModelsPage />} />

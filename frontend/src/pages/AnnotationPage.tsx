@@ -15,7 +15,7 @@ export function AnnotationPage() {
   const client = useQueryClient()
   const navigate = useNavigate()
   const { notify } = useToast()
-  const [selectedId, setSelectedId] = useState('')
+  const [selectedId, setSelectedId] = useState(() => new URLSearchParams(window.location.search).get('asset') ?? '')
   const [shapes, setShapes] = useState<Shape[]>([])
   const [labelId, setLabelId] = useState('')
   const [dirty, setDirty] = useState(false)

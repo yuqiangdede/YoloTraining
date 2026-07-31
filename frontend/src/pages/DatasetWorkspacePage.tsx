@@ -83,6 +83,7 @@ export function DatasetWorkspacePage() {
     <nav className="workspace-tabs" aria-label="数据集工作区">
       <Link className="workspace-tab active" to={`/datasets/${datasetId}`}>概览</Link>
       <Link className="workspace-tab" to={`/datasets/${datasetId}/annotate`}>标注</Link>
+      <Link className="workspace-tab" to={`/datasets/${datasetId}/analysis`}>错误分析</Link>
       <a className="workspace-tab" href="#workspace-assets">素材</a>
       <a className="workspace-tab" href="#quality-report">质量</a>
       <a className="workspace-tab" href="#dataset-versions">版本</a>
