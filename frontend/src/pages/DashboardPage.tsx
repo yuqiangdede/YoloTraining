@@ -7,7 +7,7 @@ import { api } from '../lib/api'
 import { jobStatusLabels, taskLabels } from '../lib/labels'
 
 export function DashboardPage() {
-  const datasets = useQuery({ queryKey: ['datasets'], queryFn: api.datasets })
+  const datasets = useQuery({ queryKey: ['datasets'], queryFn: () => api.datasets() })
   const versions = useQuery({ queryKey: ['datasetVersions'], queryFn: api.allDatasetVersions })
   const jobs = useQuery({ queryKey: ['jobs'], queryFn: api.jobs, refetchInterval: 3000 })
   const models = useQuery({ queryKey: ['models'], queryFn: api.models })

@@ -39,6 +39,7 @@ export interface Pagination { page: number; pageSize: number; totalItems: number
 
 export interface Dataset {
   id: string
+  projectId: string
   name: string
   task: TaskType
   assetCount: number
@@ -51,6 +52,17 @@ export interface Dataset {
   prelabelModelPath: string | null
   prelabelMode: PrelabelMode
   prelabelConfidence: number
+}
+
+export interface Project {
+  id: string
+  name: string
+  description: string
+  datasetCount: number
+  trainingCount: number
+  modelCount: number
+  createdAt: string
+  updatedAt: string
 }
 
 export interface Category {
@@ -219,7 +231,10 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 export const api = {
   health: () => request<{ status: string; projectRoot: string }>('/health'),
   environment: () => request<{ python: string; gpu: { isAvailable: boolean; name: string | null; cuda: string | null; memoryBytes: number | null }; disk: { totalBytes: number; freeBytes: number }; projectRoot: string; venvIsLocal: boolean }>('/system/environment'),
-  datasets: () => request<{ data: Dataset[] }>('/datasets'),
+  projects: () => request<{ data: Project[] }>('/projects'),
+  project: (id: string) => request<{ data: Project }>(`/projects/${id}`),
+  createProject: (body: { name: string; description?: string }) => request<{ data: Project }>('/projects', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }),
+  datasets: (projectId?: string) => request<{ data: Dataset[] }>(`/datasets${projectId ? `?project_id=${encodeURIComponent(projectId)}` : ''}`),
   dataset: (id: string) => request<{ data: Dataset }>(`/datasets/${id}`),
   datasetSummary: (id: string) => request<{ data: { dataset: Dataset; quality: QualityReport; versions: number } }>(`/datasets/${id}/summary`),
   datasetQuality: (id: string) => request<{ data: QualityReport }>(`/datasets/${id}/quality`),

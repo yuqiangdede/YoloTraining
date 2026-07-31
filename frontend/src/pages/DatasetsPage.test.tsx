@@ -7,6 +7,7 @@ import { DatasetsPage } from './DatasetsPage'
 
 const { api } = vi.hoisted(() => ({ api: {
   datasets: vi.fn(),
+  projects: vi.fn(),
   createDataset: vi.fn(),
   importVoc: vi.fn(),
 } }))
@@ -22,6 +23,7 @@ describe('DatasetsPage', () => {
   beforeEach(() => {
     cleanup()
     api.datasets.mockResolvedValue({ data: [] })
+    api.projects.mockResolvedValue({ data: [{ id: 'default', name: '默认项目' }] })
     api.createDataset.mockResolvedValue({ data: { id: 'dataset-1' } })
     api.importVoc.mockResolvedValue({ data: {
       dataset: { id: 'dataset-imported' },
@@ -52,7 +54,7 @@ describe('DatasetsPage', () => {
     fireEvent.keyDown(input, { key: 'Enter' })
     fireEvent.change(screen.getByLabelText('名称'), { target: { value: 'roads' } })
     fireEvent.click(screen.getByRole('button', { name: '创建数据集' }))
-    await waitFor(() => expect(api.createDataset).toHaveBeenCalledWith({ name: 'roads', task: 'detect', categories: [{ name: 'car' }] }))
+    await waitFor(() => expect(api.createDataset).toHaveBeenCalledWith({ projectId: 'default', name: 'roads', task: 'detect', categories: [{ name: 'car' }] }))
   })
 
   it('includes keypoint count when creating a pose dataset', async () => {

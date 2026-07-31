@@ -17,11 +17,14 @@ export function DatasetsPage() {
   const client = useQueryClient()
   const navigate = useNavigate()
   const { notify } = useToast()
-  const datasets = useQuery({ queryKey: ['datasets'], queryFn: api.datasets })
+  const initialProjectId = new URLSearchParams(window.location.search).get('project') ?? ''
+  const datasets = useQuery({ queryKey: ['datasets'], queryFn: () => api.datasets() })
+  const projects = useQuery({ queryKey: ['projects'], queryFn: api.projects })
 
   const [dialogOpen, setDialogOpen] = useState(() => new URLSearchParams(window.location.search).get('create') === '1')
   const [importDialogOpen, setImportDialogOpen] = useState(false)
   const [name, setName] = useState('')
+  const [projectId, setProjectId] = useState(initialProjectId || 'default')
   const [task, setTask] = useState<TaskType>('detect')
   const [keypointCount, setKeypointCount] = useState(17)
   const [categoryName, setCategoryName] = useState('')
@@ -104,7 +107,7 @@ export function DatasetsPage() {
   const keypointError = submitted && task === 'pose' && (!Number.isInteger(keypointCount) || keypointCount < 1 || keypointCount > 1000)
     ? '关键点数量必须是 1–1000 的整数。' : ''
   const create = useMutation({
-    mutationFn: () => api.createDataset({ name: name.trim(), task, categories: categories.map((category) => ({ name: category })), ...(task === 'pose' ? { keypointCount } : {}) }),
+    mutationFn: () => api.createDataset({ projectId, name: name.trim(), task, categories: categories.map((category) => ({ name: category })), ...(task === 'pose' ? { keypointCount } : {}) }),
     onSuccess: ({ data }) => {
       client.invalidateQueries({ queryKey: ['datasets'] })
       notify(`数据集“${data.name ?? name}”已创建`)
@@ -160,6 +163,7 @@ export function DatasetsPage() {
         <button type="button" className="icon-button dialog-close" aria-label="关闭新建数据集" onClick={closeDialog}><X size={18} /></button>
         <h2 id="create-dataset-title">新建数据集</h2><p>任务类型创建后不可修改；类别仅属于当前数据集。</p>
         <div className="dialog-form">
+          <label>所属项目<select aria-label="所属项目" value={projectId} onChange={(event) => setProjectId(event.target.value)}>{(projects.data?.data ?? []).map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select></label>
           <label>名称<input ref={nameRef} value={name} maxLength={100} aria-invalid={Boolean(nameError)} onChange={(event) => setName(event.target.value)} />{nameError && <small className="field-error" role="alert">{nameError}</small>}</label>
           <label>任务<select value={task} onChange={(event) => setTask(event.target.value as TaskType)}><option value="detect">目标检测</option><option value="segment">实例分割</option><option value="semantic">语义分割</option><option value="pose">姿态估计</option><option value="obb">旋转框检测</option></select></label>
           {task === 'pose' && <label>关键点数量<input type="number" min="1" max="1000" value={keypointCount} aria-invalid={Boolean(keypointError)} onChange={(event) => setKeypointCount(Number(event.target.value))} />{keypointError && <small className="field-error" role="alert">{keypointError}</small>}</label>}

@@ -10,6 +10,7 @@ describe('App', () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     render(<QueryClientProvider client={client}><MemoryRouter><App /></MemoryRouter></QueryClientProvider>)
     expect(screen.getByText('YOLO26 Studio')).toBeInTheDocument()
+    expect(screen.getByText('项目')).toBeInTheDocument()
     expect(screen.getAllByText('数据集').length).toBeGreaterThan(0)
     expect(screen.getByText('训练任务')).toBeInTheDocument()
     expect(screen.getByText('模型结果')).toBeInTheDocument()

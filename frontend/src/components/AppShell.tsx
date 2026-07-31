@@ -1,11 +1,12 @@
 import { useQuery } from '@tanstack/react-query'
-import { Box, Database, Gauge, Layers, Menu, ScanSearch, Settings, Sparkles, X } from 'lucide-react'
+import { Box, Database, FolderKanban, Gauge, Layers, Menu, ScanSearch, Settings, Sparkles, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { api } from '../lib/api'
 
 const navigation = [
   { to: '/', label: '总览', icon: Gauge },
+  { to: '/projects', label: '项目', icon: FolderKanban },
   { to: '/datasets', label: '数据集', icon: Database },
   { to: '/training', label: '训练任务', icon: Sparkles },
   { to: '/models', label: '模型结果', icon: Layers },

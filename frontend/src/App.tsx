@@ -6,12 +6,15 @@ import { DatasetsPage } from './pages/DatasetsPage'
 import { DatasetWorkspacePage } from './pages/DatasetWorkspacePage'
 import { ModelsPage } from './pages/ModelsPage'
 import { ModelTestPage } from './pages/ModelTestPage'
+import { ProjectPage, ProjectsPage } from './pages/ProjectsPage'
 import { SystemPage } from './pages/SystemPage'
 import { TrainingPage } from './pages/TrainingPage'
 
 export function App() {
   return <Routes><Route element={<AppShell />}>
     <Route index element={<DashboardPage />} />
+    <Route path="projects" element={<ProjectsPage />} />
+    <Route path="projects/:projectId" element={<ProjectPage />} />
     <Route path="datasets/:datasetId" element={<DatasetWorkspacePage />} />
     <Route path="datasets/:datasetId/annotate" element={<AnnotationPage />} />
     <Route path="datasets" element={<DatasetsPage />} />
