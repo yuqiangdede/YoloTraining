@@ -24,6 +24,7 @@ class Database:
         inspector = inspect(self.engine)
         additions = {
             "datasets": {
+                "project_id": "VARCHAR(36) DEFAULT 'default'",
                 "prelabel_model_path": "VARCHAR(500)",
                 "prelabel_mode": "VARCHAR(20) DEFAULT 'yolo'",
                 "prelabel_confidence": "FLOAT DEFAULT 0.25",
@@ -43,6 +44,11 @@ class Database:
                 for name, definition in columns.items():
                     if name not in existing:
                         connection.execute(text(f"ALTER TABLE {table} ADD COLUMN {name} {definition}"))
+            connection.execute(text(
+                "INSERT OR IGNORE INTO projects (id, name, description, created_at, updated_at) "
+                "VALUES ('default', '默认项目', '升级前已有数据与未指定项目的数据归属在这里', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
+            ))
+            connection.execute(text("UPDATE datasets SET project_id = 'default' WHERE project_id IS NULL"))
 
     def session(self) -> Session:
         return self.sessions()

@@ -11,6 +11,7 @@ class DatasetCategoryCreate(ApiModel):
 
 class DatasetCreate(ApiModel):
     name: str = Field(min_length=1, max_length=100)
+    project_id: str = Field(default="default", min_length=1, max_length=36)
     task: TaskType
     categories: list[DatasetCategoryCreate] = Field(min_length=1)
     keypoint_count: int | None = Field(default=None, ge=1, le=1000)

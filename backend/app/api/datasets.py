@@ -8,7 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_session
-from app.models import Annotation, Asset, Dataset, DatasetCategory, DatasetVersion, ExportJob, ModelArtifact, TrainingJob
+from app.models import Annotation, Asset, Dataset, DatasetCategory, DatasetVersion, ExportJob, ModelArtifact, Project, TrainingJob
 from app.schemas.imports import VocImportRequest
 from app.schemas.datasets import DatasetCategoryCreate, DatasetCreate, DatasetUpdate, DatasetVersionCreate
 from app.services.dataset_builder import DatasetSplitError, create_snapshot
@@ -38,7 +38,7 @@ def dataset_json(item: Dataset, session: Session) -> dict:
         "reviewed": sum(status == "REVIEWED" for status in annotation_statuses),
     }
     return {
-        "id": item.id, "name": item.name, "task": item.task, "assetCount": asset_count,
+        "id": item.id, "projectId": item.project_id, "name": item.name, "task": item.task, "assetCount": asset_count,
         "annotationCounts": annotation_counts,
         "categories": [category_json(category) for category in categories],
         "keypointCount": item.keypoint_count, "flipIdx": json.loads(item.flip_idx_json) if item.flip_idx_json else None,
@@ -65,7 +65,9 @@ def require_dataset(dataset_id: str, session: Session) -> Dataset:
 
 @router.post("", status_code=status.HTTP_201_CREATED)
 def create_dataset(payload: DatasetCreate, session: Session = Depends(get_session)) -> dict:
-    dataset = Dataset(id=str(uuid4()), name=payload.name, task=payload.task, keypoint_count=payload.keypoint_count,
+    if not session.get(Project, payload.project_id):
+        raise HTTPException(404, detail={"code": "PROJECT_NOT_FOUND", "message": "项目不存在"})
+    dataset = Dataset(id=str(uuid4()), project_id=payload.project_id, name=payload.name, task=payload.task, keypoint_count=payload.keypoint_count,
                       flip_idx_json=json.dumps(payload.flip_idx) if payload.flip_idx is not None else None)
     session.add(dataset)
     for index, category in enumerate(payload.categories):
@@ -79,8 +81,11 @@ def create_dataset(payload: DatasetCreate, session: Session = Depends(get_sessio
 
 
 @router.get("")
-def list_datasets(session: Session = Depends(get_session)) -> dict:
-    return {"data": [dataset_json(item, session) for item in session.scalars(select(Dataset).order_by(Dataset.created_at.desc()))]}
+def list_datasets(project_id: str | None = None, session: Session = Depends(get_session)) -> dict:
+    query = select(Dataset).order_by(Dataset.created_at.desc())
+    if project_id:
+        query = query.where(Dataset.project_id == project_id)
+    return {"data": [dataset_json(item, session) for item in session.scalars(query)]}
 
 
 @router.get("/versions/all")
