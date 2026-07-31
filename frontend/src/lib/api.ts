@@ -65,6 +65,20 @@ export interface Project {
   updatedAt: string
 }
 
+export interface AnnotationTask {
+  id: string
+  datasetId: string
+  name: string
+  assignee: string
+  status: 'NEW' | 'IN_PROGRESS' | 'COMPLETED'
+  assetIds: string[]
+  assetCount: number
+  completedCount: number
+  progress: number
+  createdAt: string
+  updatedAt: string
+}
+
 export interface Category {
   id: string
   name: string
@@ -260,6 +274,14 @@ export const api = {
     Array.from(files).forEach((file) => form.append('files', file))
     return request<{ data: Asset[]; duplicates: string[] }>(`/datasets/${datasetId}/assets`, { method: 'POST', body: form })
   },
+  uploadVideoFrames: (datasetId: string, video: File, frameStep: number) => {
+    const form = new FormData()
+    form.append('video', video)
+    return request<{ data: Asset[]; sourcePath: string; totalFrames: number; fps: number; frameStep: number; duplicates: number }>(`/datasets/${datasetId}/video-frames?frameStep=${frameStep}`, { method: 'POST', body: form })
+  },
+  annotationTasks: (datasetId: string) => request<{ data: AnnotationTask[] }>(`/datasets/${datasetId}/annotation-tasks`),
+  createAnnotationTask: (datasetId: string, body: { name: string; assignee?: string; assetIds?: string[] }) => request<{ data: AnnotationTask }>(`/datasets/${datasetId}/annotation-tasks`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }),
+  updateAnnotationTask: (datasetId: string, taskId: string, body: { assignee: string; status: AnnotationTask['status'] }) => request<{ data: AnnotationTask }>(`/datasets/${datasetId}/annotation-tasks/${taskId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }),
   recycleAsset: (datasetId: string, id: string) => request(`/datasets/${datasetId}/assets/${id}`, { method: 'DELETE' }),
   restoreAsset: (datasetId: string, id: string) => request<Asset>(`/datasets/${datasetId}/assets/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ isDeleted: false }) }),
   getAnnotation: (datasetId: string, id: string) => request<{ data: Record<string, unknown> | null }>(`/datasets/${datasetId}/assets/${id}/annotation`),
