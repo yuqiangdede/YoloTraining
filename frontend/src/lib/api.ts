@@ -148,6 +148,8 @@ export interface VocImportReport {
 }
 
 export interface TrainingJob {
+  engine?: 'yolo' | 'rfdetr'
+  modelVariant?: import('./modelCatalog').RfDetrSize | null
   id: string
   name: string
   task: TaskType
@@ -186,6 +188,8 @@ export interface WorkerHealth {
 }
 
 export interface ModelArtifact {
+  engine?: 'yolo' | 'rfdetr'
+  modelVariant?: import('./modelCatalog').RfDetrSize | null
   id: string
   trainingJobId: string
   name: string
@@ -272,6 +276,7 @@ export const api = {
   projects: () => request<{ data: Project[] }>('/projects'),
   project: (id: string) => request<{ data: Project }>(`/projects/${id}`),
   createProject: (body: { name: string; description?: string }) => request<{ data: Project }>('/projects', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }),
+  deleteProject: (id: string) => request<{ id: string; deleted: boolean }>(`/projects/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   datasets: (projectId?: string) => request<{ data: Dataset[] }>(`/datasets${projectId ? `?project_id=${encodeURIComponent(projectId)}` : ''}`),
   dataset: (id: string) => request<{ data: Dataset }>(`/datasets/${id}`),
   datasetSummary: (id: string) => request<{ data: { dataset: Dataset; quality: QualityReport; versions: number } }>(`/datasets/${id}/summary`),
@@ -330,7 +335,7 @@ export const api = {
   jobAction: (id: string, action: 'pause' | 'resume' | 'cancel') => request<TrainingJob>(`/training-jobs/${id}/${action}`, { method: 'POST' }),
   deleteJob: (id: string) => request(`/training-jobs/${id}`, { method: 'DELETE' }),
   jobLog: (id: string) => request<{ content: string; sizeBytes: number }>(`/training-jobs/${id}/log`),
-  artifacts: (jobId: string) => request<{ data: TrainingArtifact[] }>(`/training-jobs/${jobId}/artifacts`),
+  artifacts: (jobId: string) => request<{ data: TrainingArtifact[]; trainingQuality?: TrainingQuality }>(`/training-jobs/${jobId}/artifacts`),
   models: () => request<{ data: ModelArtifact[]; pretrained: PretrainedModel[] }>('/models'),
   deleteModel: (id: string) => request(`/models/${id}`, { method: 'DELETE' }),
   predict: (artifactId: string, image: File, confidence = 0.25, format: 'pt' | 'onnx' = 'pt') => {

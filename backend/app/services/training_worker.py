@@ -15,6 +15,7 @@ from sqlalchemy import select, update
 
 from app.core.database import Database
 from app.models import AnalysisJob, Annotation, Asset, DatasetCategory, DatasetVersion, ExportJob, ModelArtifact, PrelabelJob, TrainingJob, VideoInferenceJob
+from app.services.rfdetr_training import BEST_CHECKPOINT, validation_rows
 from app.services.state_machine import JobStatus
 from app.services.training_metrics import summarize_results
 
@@ -259,6 +260,8 @@ class TrainingWorker:
             return
         run_dir = self.root / job.run_path
         run_dir.mkdir(parents=True, exist_ok=True)
+        params = json.loads(job.params_json)
+        is_rfdetr = params.get("engine") == "rfdetr"
         (run_dir / "request.json").write_text(job.params_json, encoding="utf-8")
         command = [
             sys.executable, "-m", "app.worker_runner", "--root", str(self.root),
@@ -269,10 +272,41 @@ class TrainingWorker:
             environment = os.environ.copy()
             environment["PYTHONPATH"] = str(self.root / "backend")
             environment["YOLO_CONFIG_DIR"] = str(self.root / "resources")
+            if is_rfdetr:
+                environment["HF_HOME"] = str(self.root / "cache" / "huggingface")
+                environment["TORCH_HOME"] = str(self.root / "cache" / "torch")
+                environment["HF_HUB_OFFLINE"] = "1"
+                environment["PYTHONIOENCODING"] = "utf-8"
+                environment["PYTHONUNBUFFERED"] = "1"
             process = subprocess.Popen(command, cwd=self.root / "models" / "pretrained", env=environment, stdout=log, stderr=subprocess.STDOUT)
             job.pid = process.pid
             session.commit()
             while process.poll() is None:
+                if is_rfdetr:
+                    current_status = session.scalar(select(TrainingJob.status).where(TrainingJob.id == job.id))
+                    if current_status == JobStatus.CANCELLED or self.stop_event.is_set():
+                        if os.name == "nt":
+                            # Windows 的虚拟环境启动器还会派生实际运行训练的 Python 进程。
+                            subprocess.run(["taskkill.exe", "/PID", str(process.pid), "/T", "/F"],
+                                           stdout=log, stderr=subprocess.STDOUT, timeout=10, check=False)
+                            if process.poll() is None:
+                                process.kill()
+                        else:
+                            process.terminate()
+                        try:
+                            process.wait(timeout=5)
+                        except subprocess.TimeoutExpired:
+                            process.kill()
+                            process.wait()
+                        break
+                    try:
+                        rows = validation_rows(run_dir)
+                        if rows and rows[-1]["epoch"] > job.current_epoch:
+                            job.current_epoch = rows[-1]["epoch"]
+                            job.progress = min(99, round(job.current_epoch / params["epochs"] * 100))
+                            session.commit()
+                    except (OSError, ValueError):
+                        pass
                 progress_path = run_dir / "progress.json"
                 if progress_path.exists():
                     try:
@@ -283,8 +317,12 @@ class TrainingWorker:
                     except (OSError, ValueError):
                         pass
                 time.sleep(1)
+        if is_rfdetr:
+            # 在同一写事务中清除进程并登记结果，避免与取消请求互相覆盖。
+            session.execute(update(TrainingJob).where(TrainingJob.id == job.id).values(pid=None))
         session.refresh(job)
         if job.status == JobStatus.CANCELLED:
+            session.commit()
             return
         result_path = run_dir / "result.json"
         result = json.loads(result_path.read_text(encoding="utf-8")) if result_path.exists() else {}
@@ -293,6 +331,8 @@ class TrainingWorker:
             job.status = JobStatus.PAUSED
         elif process.returncode == 0:
             job.status, job.progress = JobStatus.SUCCEEDED, 100
+            if is_rfdetr:
+                job.current_epoch = validation_rows(run_dir)[-1]["epoch"]
             self._collect_artifacts(session, job, run_dir)
         else:
             job.status = JobStatus.FAILED
@@ -360,6 +400,7 @@ class TrainingWorker:
         session.commit()
 
     def _collect_artifacts(self, session, job: TrainingJob, run_dir: Path) -> None:
+        is_rfdetr = json.loads(job.params_json).get("engine") == "rfdetr"
         metrics = {}
         rows = []
         results_csv = next(iter(run_dir.rglob("results.csv")), None)
@@ -369,15 +410,19 @@ class TrainingWorker:
                 if rows:
                     metrics = {key.strip(): value.strip() if isinstance(value, str) else value for key, value in rows[-1].items()}
         training_quality = summarize_results(rows, job.task)
-        for path in run_dir.rglob("*.pt"):
-            digest = hashlib.sha256(path.read_bytes()).hexdigest()
+        paths = [run_dir / "train" / BEST_CHECKPOINT] if is_rfdetr else run_dir.rglob("*.pt")
+        for path in paths:
+            with path.open("rb") as handle:
+                digest = hashlib.file_digest(handle, "sha256").hexdigest()
             relative = path.relative_to(self.root).as_posix()
             artifact = ModelArtifact(
                 id=str(uuid4()), training_job_id=job.id, task=job.task, name=path.name,
-                path=relative, kind="PT", sha256=digest, metrics_json=json.dumps(metrics, ensure_ascii=False),
+                path=relative, kind="RFDETR" if is_rfdetr else "PT", sha256=digest, metrics_json=json.dumps(metrics, ensure_ascii=False),
                 training_quality_json=json.dumps(training_quality, ensure_ascii=False),
             )
             session.add(artifact)
+            if is_rfdetr:
+                continue
             session.add(ExportJob(
                 id=str(uuid4()), artifact_id=artifact.id, format="onnx", status=JobStatus.QUEUED, progress=0,
                 params_json=json.dumps({"format": "onnx", "imgsz": 640}, ensure_ascii=False),

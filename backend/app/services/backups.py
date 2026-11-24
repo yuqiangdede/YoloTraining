@@ -27,7 +27,7 @@ class BackupService:
     def create(self, label: str = "manual") -> BackupRecord:
         safe_label = re.sub(r"[^A-Za-z0-9_-]+", "-", label).strip("-") or "manual"
         created = datetime.now(timezone.utc)
-        filename = f"yolo26-studio_{created.strftime('%Y%m%dT%H%M%SZ')}_{safe_label}.zip"
+        filename = f"vision-model-studio_{created.strftime('%Y%m%dT%H%M%SZ')}_{safe_label}.zip"
         output = self.backups / filename
         hashes: dict[str, str] = {}
         with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=6) as archive:
@@ -42,7 +42,7 @@ class BackupService:
                     archive.write(file_path, relative)
                     hashes[relative] = self._sha256(file_path)
             manifest = {
-                "format": "yolo26-studio-backup/v1",
+                "format": "vision-model-studio-backup/v1",
                 "label": safe_label,
                 "createdAt": created.isoformat(),
                 "files": hashes,
@@ -52,7 +52,7 @@ class BackupService:
 
     def list(self) -> list[BackupRecord]:
         records = []
-        for path in sorted(self.backups.glob("yolo26-studio_*.zip"), key=lambda item: item.stat().st_mtime, reverse=True):
+        for path in sorted(self.backups.glob("vision-model-studio_*.zip"), key=lambda item: item.stat().st_mtime, reverse=True):
             records.append(BackupRecord("saved", f"backups/{path.name}", datetime.fromtimestamp(path.stat().st_mtime, timezone.utc).isoformat(), path.stat().st_size))
         return records
 

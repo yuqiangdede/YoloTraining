@@ -1,4 +1,4 @@
-"""Run one-epoch YOLO26 training smoke tests on project-local synthetic data."""
+"""Run one-epoch YOLO training smoke tests on project-local synthetic data."""
 
 import argparse
 import os

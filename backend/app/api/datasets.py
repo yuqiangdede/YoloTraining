@@ -4,7 +4,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_session
@@ -65,6 +65,8 @@ def require_dataset(dataset_id: str, session: Session) -> Dataset:
 
 @router.post("", status_code=status.HTTP_201_CREATED)
 def create_dataset(payload: DatasetCreate, session: Session = Depends(get_session)) -> dict:
+    # 将项目检查与数据集写入放在同一个 SQLite 写事务中，避免并发删除项目。
+    session.execute(text("BEGIN IMMEDIATE"))
     if not session.get(Project, payload.project_id):
         raise HTTPException(404, detail={"code": "PROJECT_NOT_FOUND", "message": "项目不存在"})
     dataset = Dataset(id=str(uuid4()), project_id=payload.project_id, name=payload.name, task=payload.task, keypoint_count=payload.keypoint_count,

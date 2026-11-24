@@ -1,6 +1,6 @@
 # 模型下载
 
-模型文件和运行产物不提交到 Git。使用统一脚本下载官方 YOLO26 权重，脚本会先保存到项目内的 `resources/offline/YOLO26-models`，再复制到运行目录 `models/pretrained`。
+模型文件和运行产物不提交到 Git。使用统一脚本下载官方 YOLO 权重，脚本会先保存到项目内的 `resources/offline/YOLO26-models`，再复制到运行目录 `models/pretrained`。
 
 在项目根目录执行：
 

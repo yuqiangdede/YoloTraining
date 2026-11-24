@@ -6,6 +6,7 @@ import { EmptyState, ErrorState, LoadingRows } from '../components/States'
 import { PageHeader } from '../components/PageHeader'
 import { api, type PredictionResult } from '../lib/api'
 import { taskLabels } from '../lib/labels'
+import { rfDetrLabel } from '../lib/modelCatalog'
 
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024
 const MAX_VIDEO_BYTES = 500 * 1024 * 1024
@@ -26,10 +27,11 @@ export function ModelTestPage() {
   const [result, setResult] = useState<PredictionResult | null>(null)
   const [videoJobId, setVideoJobId] = useState('')
   const selectedArtifact = models.data?.data.find((model) => model.id === selectedId)
+  const isRfDetr = selectedArtifact?.engine === 'rfdetr'
   const pretrainedId = selectedId.startsWith('pretrained:') ? selectedId.slice('pretrained:'.length) : ''
   const selectedPretrained = models.data?.pretrained.find((model) => model.id === pretrainedId && model.canTest)
   const selectedExport = exports.data?.data.find((item) => item.artifactId === selectedId && item.status === 'SUCCEEDED' && item.outputPath)
-  const canUseOnnx = Boolean(selectedArtifact && selectedExport)
+  const canUseOnnx = Boolean(selectedArtifact && selectedExport && !isRfDetr)
   const testablePretrained = useMemo(() => models.data?.pretrained.filter((model) => model.canTest) ?? [], [models.data?.pretrained])
   const predict = useMutation({
     mutationFn: () => selectedPretrained ? api.predictPretrained(selectedPretrained.id, imageFile!, confidence) : api.predict(selectedId, imageFile!, confidence, modelFormat),
@@ -64,6 +66,7 @@ export function ModelTestPage() {
     return () => URL.revokeObjectURL(url)
   }, [videoFile])
   useEffect(() => { if ((modelFormat === 'onnx' && !canUseOnnx) || selectedPretrained) setModelFormat('pt') }, [canUseOnnx, modelFormat, selectedPretrained])
+  useEffect(() => { if (isRfDetr) setMode('image') }, [isRfDetr])
 
   const clearResult = () => {
     setResult(null); setVideoJobId(''); predict.reset(); createVideo.reset(); cancelVideo.reset()
@@ -100,16 +103,16 @@ export function ModelTestPage() {
         <div className="panel-heading"><div><h2><ScanSearch size={18} />选择模型与输入</h2><p>图片和视频只用于本次推理，不会加入数据集；视频任务会在后台逐帧处理。</p></div></div>
         <div className="test-mode-tabs" role="tablist" aria-label="推理模式">
           <button className={mode === 'image' ? 'button primary' : 'button secondary'} role="tab" aria-selected={mode === 'image'} onClick={() => switchMode('image')}><ImagePlus size={16} />图片测试</button>
-          <button className={mode === 'video' ? 'button primary' : 'button secondary'} role="tab" aria-selected={mode === 'video'} onClick={() => switchMode('video')}><Film size={16} />视频推理</button>
+          {!isRfDetr && <button className={mode === 'video' ? 'button primary' : 'button secondary'} role="tab" aria-selected={mode === 'video'} onClick={() => switchMode('video')}><Film size={16} />视频推理</button>}
         </div>
         <div className="form-grid">
-          <label>测试模型<select value={selectedId} onChange={(event) => { setSelectedId(event.target.value); setModelFormat('pt'); clearResult() }}><option value="">请选择模型</option>{models.data?.data.length ? <optgroup label="训练产物">{models.data.data.map((model) => <option key={model.id} value={model.id}>{model.name} · {taskLabels[model.task]}</option>)}</optgroup> : null}{testablePretrained.length ? <optgroup label="官方预训练模型">{testablePretrained.map((model) => <option key={model.id} value={`pretrained:${model.id}`}>{model.name} · {taskLabels[model.task]}</option>)}</optgroup> : null}</select></label>
-          <label>模型格式<select value={modelFormat} disabled={Boolean(selectedPretrained)} onChange={(event) => { setModelFormat(event.target.value as 'pt' | 'onnx'); clearResult() }}><option value="pt">PT 权重</option><option value="onnx" disabled={!canUseOnnx}>ONNX 导出{canUseOnnx ? '' : '（未完成）'}</option></select></label>
+          <label>测试模型<select value={selectedId} onChange={(event) => { setSelectedId(event.target.value); setModelFormat('pt'); clearResult() }}><option value="">请选择模型</option>{models.data?.data.length ? <optgroup label="训练产物">{models.data.data.map((model) => <option key={model.id} value={model.id}>{model.engine === 'rfdetr' && `${rfDetrLabel(model.modelVariant)} · `}{model.name} · {taskLabels[model.task]}</option>)}</optgroup> : null}{testablePretrained.length ? <optgroup label="官方预训练模型">{testablePretrained.map((model) => <option key={model.id} value={`pretrained:${model.id}`}>{model.name} · {taskLabels[model.task]}</option>)}</optgroup> : null}</select></label>
+          <label>模型格式<select value={modelFormat} disabled={Boolean(selectedPretrained) || isRfDetr} onChange={(event) => { setModelFormat(event.target.value as 'pt' | 'onnx'); clearResult() }}><option value="pt">{isRfDetr ? 'PTH 权重' : 'PT 权重'}</option>{!isRfDetr && <option value="onnx" disabled={!canUseOnnx}>ONNX 导出{canUseOnnx ? '' : '（未完成）'}</option>}</select></label>
           <label>置信度<input type="number" min="0" max="1" step="0.05" value={confidence} aria-invalid={confidence < 0 || confidence > 1} onChange={(event) => { setConfidence(Number(event.target.value)); clearResult() }} />{(confidence < 0 || confidence > 1) && <small className="field-error">请输入 0–1 之间的数值。</small>}</label>
           <div className="model-test-upload"><span>{mode === 'image' ? '测试图片' : '输入视频'}</span><label className="button secondary" htmlFor="test-media"><Upload size={16} />{activeFile ? '重新选择文件' : '选择文件'}</label><input id="test-media" aria-label={mode === 'image' ? '选择测试图片' : '选择测试视频'} className="sr-only" type="file" accept={mode === 'image' ? 'image/*' : 'video/*,.mkv'} onChange={(event) => selectFile(event.target.files?.[0])} /></div>
           <button className="button primary model-test-submit" disabled={!selectedId || !activeFile || confidence < 0 || confidence > 1 || (mode === 'image' ? predict.isPending : videoBusy)} onClick={() => mode === 'image' ? predict.mutate() : createVideo.mutate()}>{mode === 'image' ? <><ScanSearch size={16} />{predict.isPending ? '正在推理…' : result ? '重新测试' : '开始测试'}</> : <><Film size={16} />{createVideo.isPending ? '正在上传…' : videoBusy ? '视频处理中…' : '开始视频推理'}</>}</button>
         </div>
-        {selectedName && <p className="quiet-state model-test-model">当前模型：{selectedName} · {selectedTask ? taskLabels[selectedTask] : ''} · {modelFormat.toUpperCase()}{selectedPretrained ? ' · 官方预训练模型' : ' · 训练产物'}</p>}
+        {selectedName && <p className="quiet-state model-test-model">当前模型：{selectedName} · {selectedTask ? taskLabels[selectedTask] : ''} · {isRfDetr ? 'PTH' : modelFormat.toUpperCase()}{selectedPretrained ? ' · 官方预训练模型' : ' · 训练产物'}</p>}
         {activeFile && <p role="status" className="helper-text">已选择 {activeFile.name}，大小 {(activeFile.size / 1024 / 1024).toFixed(2)} MB。</p>}
         {localError && <ErrorState message={localError} />}
         {predict.error && mode === 'image' && <ErrorState message={predict.error.message} />}

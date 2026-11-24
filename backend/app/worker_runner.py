@@ -20,11 +20,20 @@ def main() -> int:
     os.environ.setdefault("YOLO_CONFIG_DIR", str(root / "resources"))
     raw_params = json.loads((run_dir / "request.json").read_text(encoding="utf-8"))
     try:
-        from ultralytics import YOLO
         from app.schemas.training import TrainRequest
 
         request = TrainRequest.model_validate(raw_params)
+        if request.engine == "rfdetr":
+            from app.services.rfdetr_training import train
+
+            train(root, Path(args.data).parent, run_dir, request)
+            (run_dir / "result.json").write_text(json.dumps({"status": "succeeded"}), encoding="utf-8")
+            return 0
+
+        from ultralytics import YOLO
+
         params = request.model_dump()
+        params.pop("engine")
         model_path = root / params.pop("model_path")
         params.pop("name", None)
         params.pop("dataset_version_id", None)

@@ -25,7 +25,7 @@ export function AnalysisPage() {
   const item = dataset.data?.data
   const compatibleModels = useMemo(() => {
     if (!item || !models.data) return []
-    const trained = models.data.data.filter((model) => model.task === item.task).map((model) => ({ id: model.id, name: `${model.name} · 训练 ${model.trainingJobId.slice(0, 8)}` }))
+    const trained = models.data.data.filter((model) => model.task === item.task && model.engine !== 'rfdetr').map((model) => ({ id: model.id, name: `${model.name} · 训练 ${model.trainingJobId.slice(0, 8)}` }))
     const pretrained = models.data.pretrained.filter((model) => model.task === item.task && model.canTest).map((model) => ({ id: `pretrained:${model.id}`, name: `${model.name}（预训练）` }))
     return [...trained, ...pretrained]
   }, [item, models.data])

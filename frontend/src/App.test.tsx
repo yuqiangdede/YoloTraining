@@ -9,7 +9,7 @@ describe('App', () => {
   it('exposes the complete local training workflow', () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     render(<QueryClientProvider client={client}><MemoryRouter><App /></MemoryRouter></QueryClientProvider>)
-    expect(screen.getByText('YOLO26 Studio')).toBeInTheDocument()
+    expect(screen.getAllByText('视觉模型训练台').length).toBeGreaterThan(0)
     expect(screen.getByText('项目')).toBeInTheDocument()
     expect(screen.getAllByText('数据集').length).toBeGreaterThan(0)
     expect(screen.getByText('训练任务')).toBeInTheDocument()

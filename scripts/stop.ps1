@@ -4,4 +4,4 @@ if (-not (Test-Path $PidFile)) { Write-Host 'No running server was recorded.'; e
 $ServerPid = Get-Content $PidFile -ErrorAction SilentlyContinue
 if ($ServerPid) { Stop-Process -Id $ServerPid -ErrorAction SilentlyContinue }
 Remove-Item -Path $PidFile -Force -ErrorAction SilentlyContinue
-Write-Host 'YOLO26 Studio stopped.'
+Write-Host '视觉模型训练台已停止。'

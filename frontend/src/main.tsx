@@ -6,6 +6,8 @@ import { App } from './App'
 import { ToastProvider } from './components/Toast'
 import './styles.css'
 import './interaction.css'
+import './tokens.css'
+import './theme.css'
 
 const client = new QueryClient({ defaultOptions: { queries: { retry: 1, staleTime: 3000 } } })
 

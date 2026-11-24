@@ -1,0 +1,15 @@
+:root{
+--font-sans:"PingFang SC","HarmonyOS Sans SC","Microsoft YaHei",system-ui,sans-serif;
+--font-heading:"PingFang SC","HarmonyOS Sans SC","Microsoft YaHei",system-ui,sans-serif;--fw-heading:600;
+--bg:#FAFAF9;--card:#FFFFFF;--ink:#18181B;--muted:#6B6B73;--line:#E4E4E7;
+--primary:#18181B;--on-primary:#FFFFFF;--accent:#2563EB;--link:#2563EB;
+--success:#15803D;--warning:#A16207;--danger:#DC2626;
+--radius:10px;--radius-sm:8px;--radius-lg:12px;
+--shadow:0 1px 2px rgba(24,24,27,.06);--shadow-sm:0 1px 2px rgba(24,24,27,.06);--shadow-dialog:0 16px 40px rgba(24,24,27,.14);
+--ink-soft:#6B6B73;--surface:#FFFFFF;--surface-raised:#FFFFFF;--surface-muted:#F4F4F5;
+--color-bg:#FAFAF9;--color-surface:#FFFFFF;--color-surface-raised:#FFFFFF;--color-surface-muted:#F4F4F5;
+--color-text:#18181B;--color-text-soft:#6B6B73;--color-muted:#6B6B73;--color-line:#E4E4E7;
+--color-primary:#18181B;--color-on-primary:#FFFFFF;--color-danger:#DC2626;--color-success:#15803D;
+--accent-dark:#000000;--line-soft:#E4E4E7;--nav:#FFFFFF;
+--space-1:4px;--space-2:8px;--space-3:12px;--space-4:16px;--space-5:24px;--motion-fast:160ms;--motion-standard:220ms;
+}

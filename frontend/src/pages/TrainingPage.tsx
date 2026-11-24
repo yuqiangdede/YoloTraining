@@ -7,7 +7,7 @@ import { PageHeader } from "../components/PageHeader";
 import { TrainingEvidence } from "../components/TrainingEvidence";
 import { useToast } from "../components/Toast";
 import { api } from "../lib/api";
-import { MODEL_SIZES, modelKindLabels, modelPathFor, modelSizeLabels, type ModelSize } from "../lib/modelCatalog";
+import { MODEL_SIZES, RFDETR_MODELS, modelKindLabels, modelPathFor, modelSizeLabels, rfDetrLabel, type ModelSize, type RfDetrSize } from "../lib/modelCatalog";
 import { jobStatusLabels, taskLabels } from "../lib/labels";
 
 type NumericField = {
@@ -54,6 +54,10 @@ const numericFields: NumericField[] = [
 ];
 
 const coreNumericFieldKeys = new Set(["epochs", "imgsz", "batch"]);
+const rfDetrFields: NumericField[] = [
+  ...numericFields.filter((field) => ["epochs", "batch", "lr0"].includes(field.key)),
+  { key: "seed", label: "随机种子", defaultValue: 0, help: "控制训练的随机性。", min: 0, max: 2 ** 32 - 1 },
+];
 
 function validationMessage(field: NumericField, value: string | number | boolean): string | undefined {
   if (value === "" || typeof value === "boolean" || !Number.isFinite(Number(value))) return `${field.label}必须填写有效数字。`;
@@ -117,9 +121,14 @@ export function TrainingPage() {
     queryFn: () => api.artifacts(evidenceJobId!),
     enabled: Boolean(evidenceJobId),
     retry: false,
+    refetchInterval: (query) => {
+      const job = jobs.data?.data.find((item) => item.id === evidenceJobId);
+      return job?.engine === "rfdetr" && (["QUEUED", "RUNNING"].includes(job.status) ||
+        (job.status === "SUCCEEDED" && !query.state.data?.data.length)) ? 2000 : false;
+    },
   });
   const [form, setForm] = useState<Record<string, string | number | boolean>>({
-    name: "train-yolo26n",
+    name: "train-yolo-n",
     datasetVersionId: "",
     modelPath: "models/pretrained/yolo26n.pt",
     device: "0",
@@ -131,6 +140,13 @@ export function TrainingPage() {
   });
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [modelSize, setModelSize] = useState<ModelSize>("n");
+  const [engine, setEngine] = useState<"yolo" | "rfdetr">("yolo");
+  const isRfDetr = engine === "rfdetr";
+  const [rfDetrSize, setRfDetrSize] = useState<RfDetrSize>("nano");
+  const rfDetrPath = RFDETR_MODELS[rfDetrSize].path;
+  const [rfDetrValues, setRfDetrValues] = useState<Record<string, string | number>>({
+    epochs: 100, batch: 2, lr0: 0.0001, seed: 0,
+  });
   const [nameEdited, setNameEdited] = useState(false);
   const [createdJobId, setCreatedJobId] = useState<string | null>(null);
   const [confirmation, setConfirmation] = useState<{ id: string; name: string; action: "cancel" | "delete" } | null>(null);
@@ -140,19 +156,25 @@ export function TrainingPage() {
   const create = useMutation({
     mutationFn: () => {
       const nextErrors = Object.fromEntries(
-        numericFields.flatMap((field) => {
-          const message = validationMessage(field, form[field.key]);
+        (isRfDetr ? rfDetrFields : numericFields).flatMap((field) => {
+          const value = Number(rfDetrValues[field.key]);
+          const message = isRfDetr && field.key === "batch" && (!Number.isInteger(value) || value < 1)
+            ? "批量大小必须为正整数。"
+            : isRfDetr && ["seed", "epochs"].includes(field.key) && !Number.isInteger(value)
+              ? `${field.label}必须为整数。`
+              : validationMessage(field, isRfDetr ? rfDetrValues[field.key] : form[field.key]);
           return message ? [[field.key, message]] : [];
         }),
       );
       if (!String(form.name).trim()) nextErrors.name = "任务名称不能为空。";
+      if (isRfDetr && selectedDataset?.task !== "detect") nextErrors.engine = "RF-DETR 需要目标检测数据集版本。";
       setFormErrors(nextErrors);
       if (Object.keys(nextErrors).length) {
         requestAnimationFrame(() => document.querySelector<HTMLElement>(`[name="${Object.keys(nextErrors)[0]}"]`)?.focus());
         throw new Error("请先修正标记的训练参数。");
       }
       return api.createJob({
-        ...form,
+        ...(isRfDetr ? { ...rfDetrValues, name: form.name, modelPath: rfDetrPath, engine } : form),
         datasetVersionId: selectedDataset?.id,
         task: selectedDataset?.task,
       });
@@ -191,7 +213,7 @@ export function TrainingPage() {
     const nextSize: ModelSize = "n";
     setModelSize(nextSize);
     update("modelPath", modelPathFor(selectedDataset.task, nextSize));
-    if (!nameEdited) update("name", `train-yolo26${nextSize}`);
+    if (!nameEdited) update("name", isRfDetr ? `train-rfdetr-${rfDetrSize}` : `train-yolo-${nextSize}`);
   }, [selectedDataset?.id, selectedDataset?.task]);
   const coreNumericFields = numericFields.filter((field) =>
     coreNumericFieldKeys.has(field.key),
@@ -256,10 +278,33 @@ export function TrainingPage() {
             </select>
           </label>
           <label>
-            项目内模型路径
-            <output className="model-setting-value">{form.modelPath as string}</output>
+            训练引擎
+            <select name="engine" value={engine} onChange={(event) => {
+              const nextEngine = event.target.value as "yolo" | "rfdetr";
+              setEngine(nextEngine);
+              setFormErrors({});
+              if (!nameEdited) update("name", nextEngine === "rfdetr" ? `train-rfdetr-${rfDetrSize}` : `train-yolo-${modelSize}`);
+            }}>
+              <option value="yolo">YOLO</option>
+              <option value="rfdetr">RF-DETR</option>
+            </select>
+            {formErrors.engine && <small className="field-error">{formErrors.engine}</small>}
           </label>
           <label>
+            项目内模型路径
+            <output className="model-setting-value">{isRfDetr ? rfDetrPath : form.modelPath as string}</output>
+          </label>
+          {isRfDetr && <label>
+            模型档位
+            <select value={rfDetrSize} onChange={(event) => {
+              const size = event.target.value as RfDetrSize;
+              setRfDetrSize(size);
+              if (!nameEdited) update("name", `train-rfdetr-${size}`);
+            }}>
+              {Object.entries(RFDETR_MODELS).map(([size, model]) => <option key={size} value={size}>{model.label}</option>)}
+            </select>
+          </label>}
+          {!isRfDetr && <><label>
             模型档位
             <select
               aria-label="模型档位"
@@ -269,7 +314,7 @@ export function TrainingPage() {
                 const nextSize = e.target.value as ModelSize;
                 setModelSize(nextSize);
                 if (selectedDataset) update("modelPath", modelPathFor(selectedDataset.task, nextSize));
-                if (!nameEdited) update("name", `train-yolo26${nextSize}`);
+                if (!nameEdited) update("name", `train-yolo-${nextSize}`);
               }}
             >
               {MODEL_SIZES.map((size) => <option key={size} value={size}>{modelSizeLabels[size]}</option>)}
@@ -285,8 +330,8 @@ export function TrainingPage() {
               value={form.device as string}
               onChange={(e) => update("device", e.target.value)}
             />
-          </label>
-          {coreNumericFields.map((field) => (
+          </label></>}
+          {(isRfDetr ? rfDetrFields : coreNumericFields).map((field) => (
             <label key={field.key}>
               {field.label}
               <input
@@ -295,15 +340,21 @@ export function TrainingPage() {
                 step="any"
                 aria-label={field.label}
                 aria-invalid={Boolean(formErrors[field.key])}
-                value={form[field.key] as string | number}
-                onChange={(e) => update(field.key, e.target.value)}
-                onBlur={() => validateField(field)}
+                value={isRfDetr ? rfDetrValues[field.key] : form[field.key] as string | number}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  if (isRfDetr) {
+                    setRfDetrValues((current) => ({ ...current, [field.key]: value }));
+                    setFormErrors((current) => { const next = { ...current }; delete next[field.key]; return next; });
+                  } else update(field.key, value);
+                }}
+                onBlur={() => { if (!isRfDetr) validateField(field); }}
               />
               {formErrors[field.key] && <small className="field-error">{formErrors[field.key]}</small>}
             </label>
           ))}
         </div>
-        <label className="augmentation-preset-field">
+        {!isRfDetr && <><label className="augmentation-preset-field">
           Albumentations 素材增强方案
           <select aria-label="Albumentations 素材增强方案" value={form.augmentationPreset as string} onChange={(event) => update("augmentationPreset", event.target.value)}>
             {augmentationPresets.map((preset) => <option key={preset.value} value={preset.value}>{preset.label}</option>)}
@@ -316,7 +367,7 @@ export function TrainingPage() {
             {group.title === "性能" && <><label className="check"><input type="checkbox" checked={form.amp as boolean} onChange={(event) => update("amp", event.target.checked)} />AMP 混合精度<small className="field-help">通常更快、更省显存。</small></label><label className="check"><input type="checkbox" checked={form.deterministic as boolean} onChange={(event) => update("deterministic", event.target.checked)} />确定性训练<small className="field-help">便于复现实验结果。</small></label></>}
             {group.title === "优化器" && <label>优化器<select value={form.optimizer as string} onChange={(event) => update("optimizer", event.target.value)}><option>auto</option><option>MuSGD</option><option>SGD</option><option>AdamW</option></select><small className="field-help">不确定时保持 auto。</small></label>}
           </div></fieldset>)}</div>
-        </details>
+        </details></>}
         {create.error && <ErrorState message={formatValidationError(create.error)} />}
         <div className="form-actions"><button type="submit" className="button primary" disabled={create.isPending}><Plus size={16} />{create.isPending ? "正在创建…" : "加入训练队列"}</button></div>
       </form>}
@@ -338,7 +389,7 @@ export function TrainingPage() {
               <div>
                 <strong>{job.name}</strong>
                 <span>
-                  {taskLabels[job.task]} · {job.status === "QUEUED"
+                  {job.engine === "rfdetr" && `${rfDetrLabel(job.modelVariant)} · `}{taskLabels[job.task]} · {job.status === "QUEUED"
                     ? `前方 ${Math.max(0, (job.queuePosition ?? 1) - 1)} 个任务 · 已等待 ${formatWait(job.waitSeconds)}`
                     : `Epoch ${job.currentEpoch}${job.status === "RUNNING" && worker?.currentJobId === job.id ? ` · 已运行 ${formatRuntime(worker.currentStartedAt)}` : ""}`}
                 </span>
@@ -366,7 +417,7 @@ export function TrainingPage() {
                     {"\u67e5\u770b\u65e5\u5fd7"}
                   </button>
                 )}
-                {job.status === "RUNNING" && (
+                {job.status === "RUNNING" && job.engine !== "rfdetr" && (
                   <button
                     aria-label="暂停"
                     onClick={() =>
@@ -376,7 +427,7 @@ export function TrainingPage() {
                     <Pause size={15} />
                   </button>
                 )}
-                {job.status === "PAUSED" && (
+                {job.status === "PAUSED" && job.engine !== "rfdetr" && (
                   <button
                     aria-label="恢复"
                     onClick={() =>
@@ -411,7 +462,7 @@ export function TrainingPage() {
                 <div className="job-evidence">
                   {evidence.isPending && <p className="quiet-state">正在加载训练结果摘要…</p>}
                   {evidence.isError && <ErrorState message={evidence.error.message} />}
-                  <TrainingEvidence params={job.params} quality={evidence.data?.data[0]?.trainingQuality} />
+                  <TrainingEvidence params={job.params} quality={evidence.data?.data[0]?.trainingQuality ?? evidence.data?.trainingQuality} />
                 </div>
               )}
               {logJobId === job.id && (

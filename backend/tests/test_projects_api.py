@@ -46,6 +46,26 @@ class ProjectsApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 404)
         self.assertEqual(response.json()["error"]["code"], "PROJECT_NOT_FOUND")
 
+    def test_delete_empty_project(self) -> None:
+        project = self.client.post("/api/v1/projects", json={"name": "待删除"}).json()["data"]
+        url = f"/api/v1/projects/{project['id']}"
+        self.assertEqual(self.client.delete(url).status_code, 200)
+        self.assertEqual(self.client.get(url).status_code, 404)
+        self.assertEqual(self.client.delete(url).status_code, 404)
+
+    def test_delete_preserves_default_and_projects_with_datasets(self) -> None:
+        self.assertEqual(self.client.delete("/api/v1/projects/default").status_code, 409)
+        project = self.client.post("/api/v1/projects", json={"name": "保留"}).json()["data"]
+        project_id = project["id"]
+        created = self.client.post("/api/v1/datasets", json={
+            "projectId": project_id, "name": "dataset", "task": "detect", "categories": [{"name": "car"}],
+        })
+        self.assertEqual(created.status_code, 201)
+        response = self.client.delete(f"/api/v1/projects/{project_id}")
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.json()["error"]["code"], "PROJECT_NOT_EMPTY")
+        self.assertEqual(self.client.get(f"/api/v1/projects/{project_id}").json()["data"]["datasetCount"], 1)
+
 
 if __name__ == "__main__":
     unittest.main()

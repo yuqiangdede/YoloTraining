@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 from typing import Literal
 from uuid import uuid4
 
@@ -8,13 +9,22 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_session
-from app.models import Asset, Dataset, PrelabelJob
+from app.models import Asset, Dataset, ModelArtifact, PrelabelJob
 from app.schemas.annotations import TaskType
 from app.schemas.common import ApiModel
+from app.schemas.training import RFDETR_MODELS
 from app.services.state_machine import JobStatus
 
 
 router = APIRouter(prefix="/prelabel-jobs", tags=["prelabels"])
+
+
+def reject_rfdetr_prelabel(request: Request, path: Path, session: Session) -> None:
+    relative = request.app.state.paths.relative(path)
+    if relative in RFDETR_MODELS or session.scalar(select(ModelArtifact.id).where(
+        ModelArtifact.path == relative, ModelArtifact.kind == "RFDETR",
+    )):
+        raise HTTPException(422, detail={"code": "RFDETR_PRELABEL_UNSUPPORTED", "message": "RF-DETR 暂不支持预标注"})
 
 
 DEFAULT_PRELABEL_MODEL = {
@@ -52,6 +62,8 @@ def prelabel_json(item: PrelabelJob) -> dict:
 @router.post("", status_code=status.HTTP_201_CREATED)
 def create_prelabel(request: Request, payload: PrelabelCreate, session: Session = Depends(get_session)) -> dict:
     model = request.app.state.paths.resolve(payload.model_path)
+    if payload.mode in {"yolo", "yolo_sam"}:
+        reject_rfdetr_prelabel(request, model, session)
     if payload.mode in {"yolo", "yolo_sam"} and (not payload.model_path.replace("\\", "/").startswith("models/") or not model.is_file()):
         raise HTTPException(422, detail={"code": "MODEL_NOT_FOUND", "message": "预标注模型必须位于项目 models 目录"})
     found = set(session.scalars(select(Asset.id).where(Asset.id.in_(payload.asset_ids), Asset.is_deleted.is_(False))))
@@ -87,6 +99,8 @@ def create_dataset_prelabel(dataset_id: str, request: Request, payload: DatasetP
     if mode in {"yolo", "yolo_sam"} and not model_path:
         raise HTTPException(422, detail={"code": "MODEL_REQUIRED", "message": "请先选择预标注模型"})
     model = request.app.state.paths.resolve(model_path) if model_path else None
+    if mode in {"yolo", "yolo_sam"} and model is not None:
+        reject_rfdetr_prelabel(request, model, session)
     if mode in {"yolo", "yolo_sam"} and (not model_path.replace("\\", "/").startswith("models/") or not model or not model.is_file()):
         raise HTTPException(422, detail={"code": "MODEL_NOT_FOUND", "message": "预标注模型必须位于项目 models 目录"})
     if mode in {"yolo_sam", "sam"}:

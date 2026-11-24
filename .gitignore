@@ -1,4 +1,5 @@
 .venv/
+/cache/
 frontend/node_modules/
 frontend/dist/
 frontend/*.tsbuildinfo
@@ -15,6 +16,7 @@ uploads/assets/*
 !uploads/assets/.gitkeep
 models/pretrained/*.pt
 models/pretrained/*.onnx
+models/pretrained/rfdetr/*.pth
 models/trained/*
 !models/trained/.gitkeep
 runs/*

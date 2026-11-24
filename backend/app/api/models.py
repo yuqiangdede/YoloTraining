@@ -9,6 +9,7 @@ from uuid import uuid4
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
 from fastapi.responses import FileResponse
+from starlette.concurrency import run_in_threadpool
 from pydantic import Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -16,6 +17,7 @@ from sqlalchemy.orm import Session
 from app.api.dependencies import get_session
 from app.models import ExportJob, ModelArtifact, TrainingJob, VideoInferenceJob
 from app.schemas.common import ApiModel
+from app.schemas.training import RFDETR_MODELS
 from app.services.state_machine import JobStatus
 from app.services.training_metrics import summarize_results_file
 
@@ -212,6 +214,8 @@ def _resolve_video_model(request: Request, model_id: str, model_format: str, ses
     artifact = session.get(ModelArtifact, model_id)
     if not artifact:
         raise HTTPException(404, detail={"code": "MODEL_NOT_FOUND", "message": "模型产物不存在"})
+    if artifact.kind == "RFDETR":
+        raise HTTPException(422, detail={"code": "RFDETR_IMAGE_ONLY", "message": "RF-DETR 模型仅支持单图推理"})
     job = session.get(TrainingJob, artifact.training_job_id)
     if not job or job.status != JobStatus.SUCCEEDED:
         raise HTTPException(409, detail={"code": "MODEL_NOT_READY", "message": "只有成功完成训练的模型才能推理"})
@@ -251,11 +255,16 @@ async def _save_video_upload(upload: UploadFile, destination: Path) -> int:
 
 @router.get("")
 def list_models(request: Request, session: Session = Depends(get_session)) -> dict:
+    rows = session.execute(select(ModelArtifact, TrainingJob.model_path).outerjoin(
+        TrainingJob, ModelArtifact.training_job_id == TrainingJob.id,
+    ).order_by(ModelArtifact.created_at.desc()))
     artifacts = [{
         "id": item.id, "trainingJobId": item.training_job_id, "name": item.name, "task": item.task, "path": item.path,
         "kind": item.kind, "sha256": item.sha256, "metrics": json.loads(item.metrics_json),
+        "engine": "rfdetr" if item.kind == "RFDETR" else "yolo",
+        "modelVariant": RFDETR_MODELS.get(model_path, (None, None))[0] if item.kind == "RFDETR" else None,
         "trainingQuality": _training_quality(request, item),
-    } for item in session.scalars(select(ModelArtifact).order_by(ModelArtifact.created_at.desc()))]
+    } for item, model_path in rows]
     pretrained = []
     for path in sorted((request.app.state.root / "models" / "pretrained").glob("*.pt")):
         pretrained.append(_pretrained_json(path, request.app.state.root))
@@ -387,6 +396,8 @@ async def predict_model(
     job = session.get(TrainingJob, artifact.training_job_id)
     if not job or job.status != JobStatus.SUCCEEDED:
         raise HTTPException(409, detail={"code": "MODEL_NOT_READY", "message": "只有成功完成训练的模型才能测试"})
+    if artifact.kind == "RFDETR" and model_format != "pt":
+        raise HTTPException(422, detail={"code": "RFDETR_FORMAT_UNSUPPORTED", "message": "RF-DETR 单图推理使用原始权重"})
     if model_format not in {"pt", "onnx"}:
         raise HTTPException(422, detail={"code": "INVALID_MODEL_FORMAT", "message": "模型格式只能是 PT 或 ONNX"})
     model_path = request.app.state.paths.resolve(artifact.path)
@@ -404,6 +415,19 @@ async def predict_model(
     if not model_path.is_file():
         raise HTTPException(404, detail={"code": "MODEL_FILE_MISSING", "message": "模型文件缺失"})
     source = await _validated_prediction_source(image, confidence)
+    if artifact.kind == "RFDETR":
+        from app.services.rfdetr_prediction import predict
+
+        try:
+            predictions, annotated = await run_in_threadpool(predict, model_path, source, confidence)
+        except Exception as exc:
+            raise HTTPException(422, detail={"code": "PREDICTION_FAILED", "message": f"RF-DETR 推理失败：{exc}"}) from exc
+        return {"data": {
+            "model": {"id": artifact.id, "name": model_name, "format": model_format, "task": artifact.task},
+            "image": {"width": source.width, "height": source.height, "mimeType": image.content_type},
+            "annotatedImage": annotated,
+            "predictions": predictions,
+        }}
     return _prediction_response(model_path, artifact.id, model_name, model_format, artifact.task, source, image.content_type, confidence)
 
 
@@ -433,6 +457,8 @@ def create_export(request: Request, artifact_id: str, payload: ExportCreate, ses
     artifact = session.get(ModelArtifact, artifact_id)
     if not artifact:
         raise HTTPException(404, detail={"code": "MODEL_NOT_FOUND", "message": "模型产物不存在"})
+    if artifact.kind == "RFDETR":
+        raise HTTPException(422, detail={"code": "RFDETR_EXPORT_UNSUPPORTED", "message": "RF-DETR 暂不支持 ONNX 导出"})
     if not request.app.state.paths.resolve(artifact.path).is_file():
         raise HTTPException(422, detail={"code": "MODEL_FILE_MISSING", "message": "模型文件缺失"})
     item = ExportJob(

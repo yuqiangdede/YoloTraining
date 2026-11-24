@@ -29,7 +29,7 @@ try {
     $Manifest = Join-Path $Stage 'backup-manifest.json'
     if (-not (Test-Path $Manifest)) { throw 'Backup manifest is missing.' }
     $ManifestData = Get-Content -Raw -Encoding UTF8 $Manifest | ConvertFrom-Json
-    if ($ManifestData.format -ne 'yolo26-studio-backup/v1') { throw 'Unsupported backup format.' }
+    if (@('vision-model-studio-backup/v1', 'yolo26-studio-backup/v1') -notcontains $ManifestData.format) { throw 'Unsupported backup format.' }
 
     $Safety = Join-Path $ProjectRoot ("backups\pre-restore-" + (Get-Date -Format 'yyyyMMddTHHmmss'))
     New-Item -ItemType Directory -Path $Safety -Force | Out-Null

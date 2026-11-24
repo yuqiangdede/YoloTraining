@@ -10,5 +10,8 @@
 .project-card dt { color: var(--muted); font-size: 10px; }
 .project-card dd { margin: 4px 0 0; color: var(--ink); font-size: 18px; font-weight: 800; }
 .project-enter { display: inline-flex; gap: 6px; align-items: center; color: #ff9a52; font-size: 12px; font-weight: 700; }
+.project-card { position: relative; }
+.project-enter::after { content: ''; position: absolute; inset: 0; }
+.project-card .button { position: relative; z-index: 1; }
 .project-metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 @media (max-width: 720px) { .project-metrics { grid-template-columns: 1fr; } }

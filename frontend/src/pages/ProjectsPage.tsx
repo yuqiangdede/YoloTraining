@@ -1,12 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowRight, Database, FolderKanban, Layers, Plus, Sparkles } from 'lucide-react'
+import { ArrowRight, Database, FolderKanban, Layers, Plus, Sparkles, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 
 import { EmptyState, ErrorState, LoadingRows } from '../components/States'
+import { ConfirmDialog } from '../components/ConfirmDialog'
 import { PageHeader } from '../components/PageHeader'
 import { useToast } from '../components/Toast'
-import { api } from '../lib/api'
+import { api, type Project } from '../lib/api'
 import { taskLabels } from '../lib/labels'
 import './ProjectsPage.css'
 
@@ -16,6 +17,20 @@ export function ProjectsPage() {
   const projects = useQuery({ queryKey: ['projects'], queryFn: api.projects })
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
+  const [deleting, setDeleting] = useState<Project | null>(null)
+  const remove = useMutation({
+    mutationFn: (project: Project) => api.deleteProject(project.id),
+    onSuccess: (_, project) => {
+      setDeleting(null)
+      client.removeQueries({ queryKey: ['project', project.id] })
+      client.invalidateQueries({ queryKey: ['projects'] })
+      notify(`项目“${project.name}”已删除`)
+    },
+    onError: () => {
+      setDeleting(null)
+      client.invalidateQueries({ queryKey: ['projects'] })
+    },
+  })
   const create = useMutation({
     mutationFn: () => api.createProject({ name: name.trim(), description: description.trim() }),
     onSuccess: ({ data }) => {
@@ -39,12 +54,18 @@ export function ProjectsPage() {
     </section>
     <section className="panel">
       <div className="panel-heading"><div><h2>项目列表</h2><p>进入项目后，从数据准备一路推进到模型验证。</p></div></div>
-      {projects.isPending ? <LoadingRows /> : projects.isError ? <ErrorState message={projects.error.message} onRetry={() => projects.refetch()} /> : projects.data.data.length ? <div className="project-grid">{projects.data.data.map((project) => <Link className="project-card" to={`/projects/${project.id}`} key={project.id}>
+      {remove.error && <ErrorState message={remove.error.message} />}
+      {projects.isPending ? <LoadingRows /> : projects.isError ? <ErrorState message={projects.error.message} onRetry={() => projects.refetch()} /> : projects.data.data.length ? <div className="project-grid">{projects.data.data.map((project) => <article className="project-card" key={project.id}>
         <div className="project-card-title"><FolderKanban size={20} /><div><h3>{project.name}</h3><p>{project.description || '尚未填写用途说明'}</p></div></div>
         <dl><div><dt>数据集</dt><dd>{project.datasetCount}</dd></div><div><dt>训练</dt><dd>{project.trainingCount}</dd></div><div><dt>模型</dt><dd>{project.modelCount}</dd></div></dl>
-        <span className="project-enter">进入项目<ArrowRight size={15} /></span>
-      </Link>)}</div> : <EmptyState title="还没有项目" message="创建项目后再添加数据集。" />}
+        <div className="row-actions">
+          <Link className="project-enter" to={`/projects/${project.id}`}>进入项目<ArrowRight size={15} /></Link>
+          {project.id !== 'default' && (project.datasetCount > 0 ? <small>清空数据集后可删除</small> :
+            <button className="button danger" aria-label={`删除项目 ${project.name}`} disabled={remove.isPending} onClick={() => { remove.reset(); setDeleting(project) }}><Trash2 size={16} />删除</button>)}
+        </div>
+      </article>)}</div> : <EmptyState title="还没有项目" message="创建项目后再添加数据集。" />}
     </section>
+    <ConfirmDialog open={Boolean(deleting)} title="删除项目" description={`将永久删除空项目“${deleting?.name ?? ''}”。`} confirmLabel="确认删除" pending={remove.isPending} onConfirm={() => deleting && remove.mutate(deleting)} onCancel={() => setDeleting(null)} />
   </>
 }
 

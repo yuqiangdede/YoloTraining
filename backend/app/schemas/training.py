@@ -8,6 +8,14 @@ from app.services.augmentation_presets import AugmentationPreset
 
 
 TrainingTask = Literal["detect", "segment", "semantic", "pose", "obb"]
+RFDETR_WEIGHTS = "models/pretrained/rfdetr/rf-detr-nano.pth"
+RFDETR_MODELS = {
+    RFDETR_WEIGHTS: ("nano", "RFDETRNano"),
+    "models/pretrained/rfdetr/rf-detr-small.pth": ("small", "RFDETRSmall"),
+    "models/pretrained/rfdetr/rf-detr-medium.pth": ("medium", "RFDETRMedium"),
+    "models/pretrained/rfdetr/rf-detr-large-2026.pth": ("large", "RFDETRLarge"),
+}
+RFDETR_TRAIN_FIELDS = {"engine", "task", "name", "dataset_version_id", "model_path", "epochs", "batch", "lr0", "seed"}
 TASK_MODEL_SUFFIX: dict[str, str] = {
     "detect": ".pt",
     "segment": "-seg.pt",
@@ -18,6 +26,7 @@ TASK_MODEL_SUFFIX: dict[str, str] = {
 
 
 class TrainRequest(ApiModel):
+    engine: Literal["yolo", "rfdetr"] = "yolo"
     name: str = Field(min_length=1, max_length=100)
     dataset_version_id: str
     task: TrainingTask
@@ -58,6 +67,18 @@ class TrainRequest(ApiModel):
 
     @model_validator(mode="after")
     def validate_model_task(self) -> "TrainRequest":
+        if self.engine == "rfdetr":
+            if self.task != "detect" or self.model_path not in RFDETR_MODELS:
+                raise ValueError("RF-DETR 仅支持目标检测及项目内 Nano、Small、Medium、Large 官方权重")
+            if self.model_fields_set - RFDETR_TRAIN_FIELDS:
+                raise ValueError("RF-DETR 不支持指定的 YOLO 训练参数")
+            if "batch" not in self.model_fields_set:
+                self.batch = 2
+            if "lr0" not in self.model_fields_set:
+                self.lr0 = 0.0001
+            if self.batch < 1 or self.seed < 0 or self.seed >= 2**32:
+                raise ValueError("RF-DETR 要求正整数批量和 32 位无符号随机种子")
+            return self
         name = PurePosixPath(self.model_path.replace("\\", "/")).name.lower()
         task_markers = ("-seg.pt", "-sem.pt", "-pose.pt", "-obb.pt")
         expected = TASK_MODEL_SUFFIX[self.task]

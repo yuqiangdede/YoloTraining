@@ -3,6 +3,7 @@ import { Box, Database, FolderKanban, Gauge, Layers, Menu, ScanSearch, Settings,
 import { useEffect, useRef, useState } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { api } from '../lib/api'
+import { PipelineRail } from './PipelineRail'
 
 const navigation = [
   { to: '/', label: '总览', icon: Gauge },
@@ -75,12 +76,12 @@ export function AppShell() {
   return <div className={`app-shell ${menuOpen ? 'menu-open' : ''} ${annotationMode ? 'annotation-mode' : ''}`}>
     <a className="skip-link" href="#main-content">跳到主要内容</a>
     <header className="mobile-header">
-      <div className="mobile-brand"><span className="brand-mark"><Box size={18} /></span><strong>YOLO26</strong></div>
+      <div className="mobile-brand"><span className="brand-mark"><Box size={18} /></span><strong>视觉模型训练台</strong></div>
       <button ref={toggleRef} className="menu-toggle" aria-expanded={menuOpen} aria-controls="primary-sidebar" aria-label={menuOpen ? '关闭导航菜单' : '打开导航菜单'} onClick={() => setMenuOpen((value) => !value)}>{menuOpen ? <X size={22} /> : <Menu size={22} />}</button>
     </header>
     {menuOpen && <button className="nav-scrim" aria-label="关闭导航菜单" onClick={() => setMenuOpen(false)} />}
     <aside ref={sidebarRef} id="primary-sidebar" className="sidebar" aria-hidden={isMobile && !menuOpen} inert={isMobile && !menuOpen}>
-      <div className="brand"><span className="brand-mark"><Box size={20} /></span><span className="brand-copy"><strong>YOLO26 Studio</strong><small>LOCAL TRAINING CONSOLE</small></span></div>
+      <div className="brand"><span className="brand-mark"><Box size={20} /></span><span className="brand-copy"><strong>视觉模型训练台</strong><small>LOCAL TRAINING CONSOLE</small></span></div>
       <div className="workspace-label">工作空间</div>
       <nav aria-label="主导航">
         {navigation.map(({ to, label, icon: Icon }, index) => <NavLink ref={index === 0 ? firstLinkRef : undefined} key={to} to={to} end={to === '/'} onClick={() => setMenuOpen(false)}><Icon size={18} /><span>{label}</span></NavLink>)}
@@ -91,7 +92,8 @@ export function AppShell() {
       </div>
     </aside>
     <main ref={mainRef} id="main-content" tabIndex={-1} className="main-content">
-      <div className="topbar"><span className="topbar-path">YOLO26 / LOCAL WORKSPACE</span><span className={`topbar-status ${overallReady ? '' : 'is-error'}`} title={jobs.data?.worker.lastError ?? undefined}><span className={`status-dot ${overallReady ? '' : 'is-error'}`} />{statusText}</span></div>
+      <div className="topbar"><span className="topbar-path">视觉模型训练台 / LOCAL WORKSPACE</span><span className={`topbar-status ${overallReady ? '' : 'is-error'}`} title={jobs.data?.worker.lastError ?? undefined}><span className={`status-dot ${overallReady ? '' : 'is-error'}`} />{statusText}</span></div>
+      <PipelineRail />
       <Outlet />
     </main>
   </div>

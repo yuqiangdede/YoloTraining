@@ -43,7 +43,7 @@ def create_app(root: Path | None = None, start_worker: bool = True) -> FastAPI:
         finally:
             worker.stop()
 
-    app = FastAPI(title="YOLO26 Studio API", version="1.0.0", lifespan=lifespan if start_worker else None)
+    app = FastAPI(title="视觉模型训练台 API", version="1.0.0", lifespan=lifespan if start_worker else None)
     app.state.root = project_root
     app.state.paths = ProjectPaths(project_root)
     app.state.database = database

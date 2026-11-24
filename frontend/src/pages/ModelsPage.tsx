@@ -8,6 +8,7 @@ import { PageHeader } from '../components/PageHeader'
 import { TrainingEvidence, trainingMetricLabel } from '../components/TrainingEvidence'
 import { useToast } from '../components/Toast'
 import { api, type ModelArtifact } from '../lib/api'
+import { rfDetrLabel } from '../lib/modelCatalog'
 import { formatBytes, taskLabels } from '../lib/labels'
 import { compareMetrics } from '../lib/modelComparison'
 import './ModelsPage.css'
@@ -56,17 +57,17 @@ export function ModelsPage() {
         return <article className={`model-card ${checked ? 'selected-model' : ''}`} key={model.id}>
           <label className="model-select"><input type="checkbox" checked={checked} disabled={compareDisabled} onChange={() => toggleSelected(model.id)} />{compareDisabled ? '对比已选满' : '用于对比'}</label>
           <div className="model-icon"><Layers size={22} /></div>
-          <div><span className="status-badge succeeded">训练产物 · {taskLabels[model.task]}</span><h2>{model.name}</h2><p>{model.path}</p></div>
+          <div><span className="status-badge succeeded">{model.engine === 'rfdetr' ? rfDetrLabel(model.modelVariant) : '训练产物'} · {taskLabels[model.task]}</span><h2>{model.name}</h2><p>{model.path}</p></div>
           <dl>{Object.entries(model.metrics).slice(0, 3).map(([key, value]) => <div key={key}><dt>{trainingMetricLabel(key)}</dt><dd>{String(value)}</dd></div>)}</dl>
           <TrainingEvidence params={trainingJob?.params} quality={model.trainingQuality} compact />
           <div className="row-actions">
             <Link className="button primary" to={`/models/test?model=${model.id}`}><ScanSearch size={16} />测试</Link>
-            <a className="button secondary" href={`/api/v1/models/${model.id}/download`}><Download size={16} />PT</a>
+            <a className="button secondary" href={`/api/v1/models/${model.id}/download`}><Download size={16} />{model.engine === 'rfdetr' ? 'PTH' : 'PT'}</a>
             <Link className="button secondary" to={`/training?job=${model.trainingJobId}`}>训练来源</Link>
             {exportJob?.status === 'SUCCEEDED' && <a className="button secondary" href={`/api/v1/models/${model.id}/onnx/download`}><Download size={16} />ONNX</a>}
             <button className="button danger" disabled={removeModel.isPending} onClick={() => setDeleting(model)}><Trash2 size={16} />删除</button>
           </div>
-          {exportJob ? <div className="export-status" role="status"><span>ONNX：{exportStatusLabels[exportJob.status] ?? exportJob.status}</span>{['RUNNING', 'QUEUED'].includes(exportJob.status) && <progress max="100" value={exportJob.progress} aria-label={`${model.name} ONNX 导出进度`} />}{exportJob.errorMessage && <span>{exportJob.errorMessage}</span>}</div> : <p className="quiet-state">ONNX：等待自动创建导出任务</p>}
+          {model.engine !== 'rfdetr' && (exportJob ? <div className="export-status" role="status"><span>ONNX：{exportStatusLabels[exportJob.status] ?? exportJob.status}</span>{['RUNNING', 'QUEUED'].includes(exportJob.status) && <progress max="100" value={exportJob.progress} aria-label={`${model.name} ONNX 导出进度`} />}{exportJob.errorMessage && <span>{exportJob.errorMessage}</span>}</div> : <p className="quiet-state">ONNX：等待自动创建导出任务</p>)}
         </article>
       })}</div> : <EmptyState title="还没有训练产物" message="成功完成训练后，权重和指标会出现在这里。" action={<Link className="button secondary" to="/training">创建训练任务</Link>} />}
     </section>

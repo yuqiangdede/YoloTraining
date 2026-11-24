@@ -1,6 +1,18 @@
 import type { TaskType } from './api'
 
 export type ModelSize = 'n' | 's' | 'm' | 'l' | 'x'
+export const RFDETR_MODELS = {
+  nano: { label: 'Nano', path: 'models/pretrained/rfdetr/rf-detr-nano.pth' },
+  small: { label: 'Small', path: 'models/pretrained/rfdetr/rf-detr-small.pth' },
+  medium: { label: 'Medium', path: 'models/pretrained/rfdetr/rf-detr-medium.pth' },
+  large: { label: 'Large', path: 'models/pretrained/rfdetr/rf-detr-large-2026.pth' },
+} as const
+
+export type RfDetrSize = keyof typeof RFDETR_MODELS
+
+export function rfDetrLabel(size?: RfDetrSize | null): string {
+  return size ? `RF-DETR ${RFDETR_MODELS[size].label}` : 'RF-DETR'
+}
 
 export const MODEL_SIZES: ModelSize[] = ['n', 's', 'm', 'l', 'x']
 

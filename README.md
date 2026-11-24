@@ -1,6 +1,6 @@
-# YOLO26 Studio
+# 视觉模型训练台
 
-YOLO26 Studio 是一个仅在本机运行的视觉模型训练平台。它把项目、数据集、图片/视频素材、五类人工标注、任务分发、不可变数据集快照、动态增强、GPU 训练队列、模型管理、预标注、TP/FP/FN 错误分析和 ONNX 导出放在一个 Web 界面中。
+视觉模型训练台是一个仅在本机运行的视觉模型训练平台。它把项目、数据集、图片/视频素材、五类人工标注、任务分发、不可变数据集快照、动态增强、GPU 训练队列、模型管理、预标注、TP/FP/FN 错误分析和 ONNX 导出放在一个 Web 界面中。
 
 支持的任务：
 
@@ -41,7 +41,7 @@ YOLO26 Studio 是一个仅在本机运行的视觉模型训练平台。它把项
 
 ## 安装
 
-依赖准备脚本要求显式传入离线资源根目录。该目录应包含 `PyTorch离线包/cu124-py311` 和 `YOLO26平台依赖`：
+依赖准备脚本要求显式传入离线资源根目录。该目录应包含 `PyTorch离线包/cu124-py311` 和 `YOLO26平台依赖`（离线资源目录名，保持不变）：
 
 ```powershell
 Set-ExecutionPolicy -Scope Process Bypass
@@ -50,13 +50,26 @@ Set-ExecutionPolicy -Scope Process Bypass
 
 脚本会创建项目根目录 `.venv`，从离线 wheels 安装 CUDA 版 PyTorch 和平台依赖，并在 `frontend/node_modules` 安装前端依赖。不会使用 Conda、全局 Python 环境或项目外模型。
 
-下载其他 YOLO26 尺寸或重新归档模型：
+下载其他 YOLO 尺寸或重新归档模型：
 
 ```powershell
 .\scripts\download-models.ps1 -OfflineResourceRoot "你的离线资源目录" -Scales n,s,m,l,x
 ```
 
 模型始终先保存到离线资源目录，再复制到 `models/pretrained`。
+
+### RF-DETR（可选）
+
+RF-DETR 使用 Python 3.11 和项目内 CUDA 版 PyTorch。将 `backend/requirements-rfdetr.txt` 所需的额外 wheels 及传递依赖备齐后，运行离线安装和权重准备命令。
+
+```powershell
+.\scripts\install.ps1 -OfflineResourceRoot '你的离线资源目录' -RfDetrWheelDir '你的 RF-DETR wheels 目录'
+.\scripts\download-models.ps1 -RfDetr -RfDetrSizes nano,small,medium,large
+```
+
+可只下载需要的尺寸。权重优先从 `D:\cache\models` 复用，经上游校验后复制到 `models/pretrained/rfdetr/`。Large 使用官方 2026 版检测权重。
+
+启动后，在「训练任务」选择 **RF-DETR** 和模型档位，再选用含训练集和验证集的目标检测版本。可先设置 1 轮验证流程，Large 建议从批量 1 开始。成功后在「模型结果」下载 `.pth` 或上传图片进行测试。COCO 工作副本位于对应任务的 `runs/<任务 ID>/coco`，训练与推理使用本机资源。
 
 ## 启动与停止
 

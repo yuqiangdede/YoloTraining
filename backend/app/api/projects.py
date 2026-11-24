@@ -1,7 +1,7 @@
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_session
@@ -56,3 +56,16 @@ def list_projects(session: Session = Depends(get_session)) -> dict:
 @router.get("/{project_id}")
 def get_project(project_id: str, session: Session = Depends(get_session)) -> dict:
     return {"data": project_json(require_project(project_id, session), session)}
+
+
+@router.delete("/{project_id}")
+def delete_project(project_id: str, session: Session = Depends(get_session)) -> dict:
+    if project_id == "default":
+        raise HTTPException(409, detail={"code": "DEFAULT_PROJECT_PROTECTED", "message": "默认项目不可删除"})
+    has_datasets = select(Dataset.id).where(Dataset.project_id == project_id).exists()
+    deleted = session.execute(delete(Project).where(Project.id == project_id, ~has_datasets)).rowcount
+    if not deleted:
+        require_project(project_id, session)
+        raise HTTPException(409, detail={"code": "PROJECT_NOT_EMPTY", "message": "项目仍有数据集，请先到数据集页面处理"})
+    session.commit()
+    return {"id": project_id, "deleted": True}

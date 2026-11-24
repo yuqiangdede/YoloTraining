@@ -8,6 +8,7 @@ import { ProjectsPage } from './ProjectsPage'
 const { api } = vi.hoisted(() => ({ api: {
   projects: vi.fn().mockResolvedValue({ data: [{ id: 'default', name: '默认项目', description: '', datasetCount: 2, trainingCount: 1, modelCount: 1 }] }),
   createProject: vi.fn().mockResolvedValue({ data: { id: 'project-1', name: '厂区安全' } }),
+  deleteProject: vi.fn().mockResolvedValue({ id: 'empty', deleted: true }),
 } }))
 
 vi.mock('../lib/api', () => ({ api }))
@@ -22,5 +23,18 @@ describe('ProjectsPage', () => {
     fireEvent.change(screen.getByLabelText('用途说明'), { target: { value: '安全帽检测' } })
     fireEvent.click(screen.getByRole('button', { name: '创建项目' }))
     await waitFor(() => expect(api.createProject).toHaveBeenCalledWith({ name: '厂区安全', description: '安全帽检测' }))
+  })
+
+  it('asks for confirmation before deleting an empty project', async () => {
+    api.projects.mockResolvedValueOnce({ data: [{
+      id: 'empty', name: '空项目', description: '', datasetCount: 0, trainingCount: 0, modelCount: 0,
+    }] })
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(<QueryClientProvider client={client}><MemoryRouter><ProjectsPage /></MemoryRouter></QueryClientProvider>)
+    fireEvent.click(await screen.findByRole('button', { name: '删除项目 空项目' }))
+    expect(api.deleteProject).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: '确认删除' }))
+    await waitFor(() => expect(api.deleteProject).toHaveBeenCalledWith('empty'))
+    await waitFor(() => expect(screen.queryByText('空项目')).not.toBeInTheDocument())
   })
 })

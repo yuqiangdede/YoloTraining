@@ -3,6 +3,7 @@ import tempfile
 import unittest
 from datetime import timedelta
 from pathlib import Path
+from unittest.mock import patch
 from uuid import uuid4
 
 from fastapi.testclient import TestClient
@@ -10,6 +11,7 @@ from sqlalchemy import select
 
 from app.main import create_app
 from app.models import Asset, Dataset, DatasetVersion, ExportJob, ModelArtifact, TrainingJob
+from app.schemas.training import RFDETR_WEIGHTS
 
 
 class TrainingApiTests(unittest.TestCase):
@@ -116,6 +118,29 @@ class TrainingApiTests(unittest.TestCase):
         })
         self.assertEqual(response.status_code, 422)
         self.assertEqual(response.json()["error"]["code"], "INVALID_DATASET_SPLIT")
+
+    def test_rfdetr_requires_local_weight_and_validation_and_reuses_queue(self) -> None:
+        payload = {"engine": "rfdetr", "name": "roads-rfdetr", "datasetVersionId": "dataset-1",
+                   "task": "detect", "modelPath": RFDETR_WEIGHTS}
+        missing = self.client.post("/api/v1/training-jobs", json=payload)
+        self.assertEqual(missing.json()["error"]["code"], "MODEL_NOT_FOUND")
+        weight = self.root / RFDETR_WEIGHTS
+        weight.parent.mkdir()
+        weight.write_bytes(b"test model")
+        with patch("app.api.training.find_spec", return_value=object()):
+            response = self.client.post("/api/v1/training-jobs", json=payload)
+        self.assertEqual(response.status_code, 201)
+        job = response.json()
+        self.assertEqual(job["engine"], "rfdetr")
+        self.assertEqual(job["params"]["batch"], 2)
+        self.assertNotIn("imgsz", job["params"])
+        job_url = f"/api/v1/training-jobs/{job['id']}"
+        self.assertEqual(self.client.post(job_url + "/pause").status_code, 422)
+        self.assertEqual(self.client.post(job_url + "/resume").status_code, 422)
+        self.assertEqual(self.client.post(job_url + "/cancel").json()["status"], "CANCELLED")
+        (self.root / "data/datasets/dataset-1/images/val/two.png").unlink()
+        missing = self.client.post("/api/v1/training-jobs", json=payload)
+        self.assertEqual(missing.json()["error"]["code"], "INVALID_DATASET_SPLIT")
 
     def test_returns_job_error_and_log_content(self) -> None:
         from app.models import TrainingJob

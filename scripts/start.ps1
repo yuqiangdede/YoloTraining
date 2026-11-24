@@ -17,4 +17,4 @@ $Process = Start-Process -FilePath $Python -ArgumentList @('-m','uvicorn','app.m
 $Process.Id | Set-Content $PidFile -Encoding ascii
 Start-Sleep -Seconds 2
 if (-not $NoBrowser) { Start-Process 'http://127.0.0.1:8000' }
-Write-Host "YOLO26 Studio started at http://127.0.0.1:8000 (PID $($Process.Id))"
+Write-Host "视觉模型训练台已启动：http://127.0.0.1:8000 (PID $($Process.Id))"
